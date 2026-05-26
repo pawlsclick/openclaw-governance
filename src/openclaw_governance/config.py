@@ -24,6 +24,8 @@ class GovernanceConfig:
     remote_default_branch: str = "main"
     domain_prefix_rules: list[tuple[str, str]] = field(default_factory=lambda: list(DEFAULT_DOMAIN_PREFIX_RULES))
     discovery_scan_git_repos: bool = True
+    discovery_scan_workspace_runbooks: bool = True
+    discovery_workspace_runbook_glob: str = "**/*runbook*.md"
     discovery_script_globs: list[str] = field(default_factory=lambda: ["scripts/**/*.py", "automation/**/*.py"])
     require_readme_markers: bool = True
     finance_agent_owner_check: bool = False
@@ -125,6 +127,10 @@ def load_config(
         remote_default_branch=remote_branch,
         domain_prefix_rules=_parse_prefix_rules(data.get("domain_prefix_rules")),
         discovery_scan_git_repos=bool(discovery_cfg.get("scan_git_repos", True)),
+        discovery_scan_workspace_runbooks=bool(discovery_cfg.get("scan_workspace_runbooks", True)),
+        discovery_workspace_runbook_glob=str(
+            discovery_cfg.get("scan_workspace_runbook_glob", "**/*runbook*.md")
+        ),
         discovery_script_globs=[str(item) for item in script_globs],
         require_readme_markers=bool(data.get("require_readme_markers", True)),
         finance_agent_owner_check=bool(data.get("finance_agent_owner_check", False)),

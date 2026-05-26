@@ -18,6 +18,8 @@ agents:
 
 discovery:
   scan_git_repos: true
+  scan_workspace_runbooks: true
+  scan_workspace_runbook_glob: "**/*runbook*.md"
   scan_script_globs:
     - "scripts/**/*.py"
     - "automation/**/*.py"
