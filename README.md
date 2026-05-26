@@ -23,9 +23,9 @@ flowchart TB
   GH -->|CI| DRIFT["governance-drift.yml\nregen --check · check"]
 ```
 
-## Install (v0.2)
+## Install (v0.2.1)
 
-Pinned release: `@v0.2.0` on `main`. Use a tag when you want a fixed version; use `@main` only if you accept moving-head changes.
+Pinned release: `@v0.2.1`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
 
 ### Ubuntu / Debian (pipx — recommended)
 
@@ -37,11 +37,17 @@ sudo apt install -y pipx python3-venv
 pipx ensurepath
 # Log out/in, or: source ~/.profile
 
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.0"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.1"
 openclaw-gov --version
 ```
 
-Upgrade later: `pipx upgrade openclaw-governance`
+**Upgrade** to a newer tag (pipx matches installs by full URL — use `--force` when the tag changes):
+
+```bash
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.1" --force
+```
+
+`pipx upgrade openclaw-governance` alone does not change an existing git tag pin.
 
 **venv fallback** (no pipx): `python3 -m venv ~/.openclaw/venv/governance`, install with that venv’s `pip`, and add `~/.openclaw/venv/governance/bin` to `PATH`.
 
@@ -52,7 +58,7 @@ Avoid `pip install --break-system-packages` on the host Python unless you accept
 When you already work inside a virtualenv (or a image without PEP 668 restrictions):
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.0"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.1"
 ```
 
 ### Editable dev install
