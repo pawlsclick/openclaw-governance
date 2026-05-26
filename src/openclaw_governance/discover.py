@@ -287,9 +287,14 @@ def run_openclaw_cron_list(agent_id: str) -> tuple[list[dict[str, Any]], str | N
 
 def parse_cron_jobs(agent_id: str, jobs: list[dict[str, Any]]) -> list[CronJob]:
     parsed: list[CronJob] = []
+    seen: set[str] = set()
     for job in jobs:
         job_id = str(job.get("id", ""))
         name = str(job.get("name") or job_id or "unnamed")
+        dedupe_key = job_id or name
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
         enabled = bool(job.get("enabled", True))
         schedule = ""
         sched = job.get("schedule")
