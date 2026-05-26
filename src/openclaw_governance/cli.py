@@ -122,41 +122,66 @@ def cmd_inject(args: argparse.Namespace) -> int:
     )
 
 
+def _root_argument_help() -> str:
+    return (
+        "Governance root (directory with governance.config.yaml). "
+        "Default: walk up from cwd or ~/.openclaw/governance."
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--root", help=_root_argument_help())
+
     parser = argparse.ArgumentParser(prog="openclaw-gov", description="OpenClaw governance toolkit")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument(
-        "--root",
-        help="Governance root (directory with governance.config.yaml). Default: walk up from cwd or use OPENCLAW_HOME/governance after init.",
-    )
+    parser.add_argument("--root", help=_root_argument_help())
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("doctor", help="Check OpenClaw home, CLI, and governance paths").set_defaults(
-        func=cmd_doctor
-    )
+    sub.add_parser(
+        "doctor",
+        parents=[common],
+        help="Check OpenClaw home, CLI, and governance paths",
+    ).set_defaults(func=cmd_doctor)
 
-    init_parser = sub.add_parser("init", help="Initialize governance root from templates")
-    init_parser.add_argument(
-        "--root",
-        help="Governance root to create (default: ~/.openclaw/governance). Also accepted as: openclaw-gov --root PATH init",
+    init_parser = sub.add_parser(
+        "init",
+        parents=[common],
+        help="Initialize governance root from templates",
     )
     init_parser.add_argument("--force", action="store_true", help="Overwrite template files")
     init_parser.set_defaults(func=cmd_init)
 
-    discover_parser = sub.add_parser("discover", help="Discover agents, crons, repos (dry-run by default)")
+    discover_parser = sub.add_parser(
+        "discover",
+        parents=[common],
+        help="Discover agents, crons, repos (dry-run by default)",
+    )
     discover_parser.add_argument("--write", action="store_true", help="Write registry + runbook stubs")
     discover_parser.add_argument("--json", action="store_true", help="Print inventory JSON to stdout")
     discover_parser.set_defaults(func=cmd_discover)
 
-    sub.add_parser("check", help="Validate registry, runbooks, and README markers").set_defaults(func=cmd_check)
+    sub.add_parser(
+        "check",
+        parents=[common],
+        help="Validate registry, runbooks, and README markers",
+    ).set_defaults(func=cmd_check)
 
-    regen_parser = sub.add_parser("regen", help="Regenerate README summary and RACI sections")
+    regen_parser = sub.add_parser(
+        "regen",
+        parents=[common],
+        help="Regenerate README summary and RACI sections",
+    )
     regen_parser.add_argument("--write", action="store_true")
     regen_parser.add_argument("--check", action="store_true")
     regen_parser.set_defaults(func=cmd_regen)
 
-    inject_parser = sub.add_parser("inject-agents", help="Inject governance stanza into agent AGENTS.md files")
+    inject_parser = sub.add_parser(
+        "inject-agents",
+        parents=[common],
+        help="Inject governance stanza into agent AGENTS.md files",
+    )
     inject_parser.add_argument("--write", action="store_true")
     inject_parser.add_argument(
         "--agent",
@@ -175,9 +200,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI args; --root may appear before or after the subcommand."""
     parser = build_parser()
-    args = parser.parse_args(argv)
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+
+    leading = argparse.ArgumentParser(add_help=False)
+    leading.add_argument("--root")
+    leading_args, remaining = leading.parse_known_args(argv_list)
+
+    args = parser.parse_args(remaining)
+    if leading_args.root and not getattr(args, "root", None):
+        args.root = leading_args.root
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     return int(args.func(args))
 
 
