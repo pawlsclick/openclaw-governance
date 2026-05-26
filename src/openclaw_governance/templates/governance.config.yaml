@@ -27,7 +27,11 @@ discovery:
 require_readme_markers: true
 finance_agent_owner_check: false
 
-# Optional: extend RACI domain prefix rules
+# Optional: override automatic RACI domain prefix rules (replaces built-in defaults).
+# By default, discover --write creates one ops domain per discovered agent
+# (agent id with hyphens -> underscores + "_ops", e.g. billing-bot -> billing_bot_ops)
+# and maps workflows "{agent_id}.*" to that domain. OpenClaw's usual "main" agent
+# also keeps governance_registry / personal_ops for shared templates.
 # domain_prefix_rules:
 #   - prefix: finance.
 #     domain: finance_trading
