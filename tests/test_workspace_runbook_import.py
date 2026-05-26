@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import yaml
@@ -78,6 +79,11 @@ def test_import_workspace_runbook_on_write(tmp_path: Path) -> None:
 
     registry = yaml.safe_load((gov / "workflows/registry.yaml").read_text(encoding="utf-8"))
     assert any(item["id"] == "finance.finance_risk" for item in registry["workflows"])
+
+    inventory = json.loads(
+        (gov / "workflows/discovered-inventory.json").read_text(encoding="utf-8")
+    )
+    assert any(item["workflow_id"] == "finance.finance_risk" for item in inventory["runbooks"])
 
 
 def test_skipped_workspace_import_keeps_existing_runbook_metadata(tmp_path: Path) -> None:

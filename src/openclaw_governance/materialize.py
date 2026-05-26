@@ -301,6 +301,7 @@ def materialize_from_discovery(
         "runbooks_in_workspaces": len(result.workspace_runbooks),
     }
 
+    known_agent_ids = {agent.agent_id for agent in result.agents}
     governance_runbooks = list(result.runbooks)
     if write and result.workspace_runbooks:
         import_summary = import_workspace_runbooks(result.workspace_runbooks, config)
@@ -312,7 +313,6 @@ def materialize_from_discovery(
             for item in result.workspace_runbooks
             if item.target_runbook in imported_runbooks
         }
-        known_agent_ids = {agent.agent_id for agent in result.agents}
         governance_runbooks = scan_runbooks_on_disk(config, known_agent_ids)
     elif result.workspace_runbooks:
         existing_runbook_workflow_ids = {runbook.workflow_id for runbook in governance_runbooks}
@@ -437,7 +437,19 @@ def materialize_from_discovery(
 
     inventory_path = config.governance_root / "workflows" / "discovered-inventory.json"
     inventory_path.parent.mkdir(parents=True, exist_ok=True)
-    inventory_path.write_text(json.dumps(result.to_dict(), indent=2) + "\n", encoding="utf-8")
+    inventory_result = DiscoveryResult(
+        generated_at=result.generated_at,
+        openclaw_home=result.openclaw_home,
+        openclaw_config_path=result.openclaw_config_path,
+        agents=result.agents,
+        runbooks=scan_runbooks_on_disk(config, known_agent_ids),
+        workspace_runbooks=result.workspace_runbooks,
+        warnings=result.warnings,
+    )
+    inventory_path.write_text(
+        json.dumps(inventory_result.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
     summary["inventory_path"] = str(inventory_path)
     summary["registry_path"] = str(registry_path)
     return summary
