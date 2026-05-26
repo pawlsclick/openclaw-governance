@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install openclaw-governance
-        run: python -m pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.1.0"
+        run: python -m pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.1"
       - name: Check README workflow summary
         run: openclaw-gov regen --check --root .
       - name: Check workflow registry
