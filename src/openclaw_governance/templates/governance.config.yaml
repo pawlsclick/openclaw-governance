@@ -1,0 +1,23 @@
+# openclaw-gov instance configuration
+openclaw_home: "OPENCLAW_HOME_PLACEHOLDER"
+governance_root: "GOVERNANCE_ROOT_PLACEHOLDER"
+
+accountable_humans:
+  - Operator
+
+agents:
+  broadcast_excluded: []
+
+discovery:
+  scan_git_repos: true
+  scan_script_globs:
+    - "scripts/**/*.py"
+    - "automation/**/*.py"
+
+require_readme_markers: true
+finance_agent_owner_check: false
+
+# Optional: extend RACI domain prefix rules
+# domain_prefix_rules:
+#   - prefix: finance.
+#     domain: finance_trading

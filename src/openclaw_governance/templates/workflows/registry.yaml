@@ -1,0 +1,9 @@
+generated_at: null
+version: 0.1
+source_note: Initialized by openclaw-gov init. Run openclaw-gov discover --write to populate.
+
+agents: []
+
+raci_domains: {}
+
+workflows: []

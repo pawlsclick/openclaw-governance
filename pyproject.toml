@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openclaw-governance"
+version = "0.1.0"
+description = "Discovery, validation, and runbook generation for OpenClaw multi-agent governance"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Woodrow Brown" }]
+dependencies = ["pyyaml>=6.0"]
+
+[project.scripts]
+openclaw-gov = "openclaw_governance.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/pawlsclick/openclaw-governance"
+Repository = "https://github.com/pawlsclick/openclaw-governance"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+openclaw_governance = ["templates/**/*"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
