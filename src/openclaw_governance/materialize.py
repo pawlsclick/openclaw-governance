@@ -251,6 +251,18 @@ def default_raci_domains(agent_ids_list: list[str]) -> dict[str, Any]:
     }
 
 
+CRON_DISCOVERY_REFRESH_FIELDS = (
+    "agent",
+    "purpose",
+    "trigger",
+    "orchestration",
+    "success_criteria",
+    "failure_modes",
+    "tests",
+    "discovered_from",
+)
+
+
 def merge_workflows(
     existing: list[dict[str, Any]],
     proposed: list[dict[str, Any]],
@@ -263,13 +275,18 @@ def merge_workflows(
         workflow_id = str(workflow.get("id"))
         if workflow_id in by_id:
             current = by_id[workflow_id]
-            # Preserve operator edits; refresh cron ids and runtime from discovery.
+            # Preserve operator edits; refresh discovery-owned cron fields when
+            # a runbook-discovered row is later matched to a real cron job.
             if workflow.get("cron_job_ids"):
                 current["cron_job_ids"] = workflow["cron_job_ids"]
             if (
                 workflow.get("orchestration") == "openclaw_cron"
                 and workflow.get("runtime_status")
             ):
+                if current.get("orchestration") != "openclaw_cron":
+                    for field in CRON_DISCOVERY_REFRESH_FIELDS:
+                        if field in workflow:
+                            current[field] = workflow[field]
                 current["runtime_status"] = workflow["runtime_status"]
             updated.append(workflow_id)
         else:
