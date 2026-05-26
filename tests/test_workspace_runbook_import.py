@@ -99,4 +99,5 @@ def test_discover_dry_run_does_not_import(tmp_path: Path) -> None:
 
     summary = materialize_from_discovery(result, config, write=False)
     assert summary["would_import_runbooks"]
+    assert summary["would_link_runbooks"] == [found[0].workflow_id]
     assert not list(gov.glob("workflows/runbooks/*.md"))

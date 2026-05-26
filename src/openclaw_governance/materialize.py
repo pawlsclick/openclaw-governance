@@ -305,6 +305,24 @@ def materialize_from_discovery(
         summary["skipped_imported_runbooks"] = import_summary["skipped_imported_runbooks"]
         known_agent_ids = {agent.agent_id for agent in result.agents}
         governance_runbooks = scan_runbooks_on_disk(config, known_agent_ids)
+    elif result.workspace_runbooks:
+        existing_runbook_workflow_ids = {runbook.workflow_id for runbook in governance_runbooks}
+        for item in result.workspace_runbooks:
+            if item.workflow_id in existing_runbook_workflow_ids:
+                continue
+            target = config.governance_root / item.target_runbook
+            if target.is_file():
+                continue
+            governance_runbooks.append(
+                DiscoveredRunbook(
+                    workflow_id=item.workflow_id,
+                    runbook=item.target_runbook,
+                    agent_id=item.agent_id,
+                    title=item.title,
+                    path=str(target.resolve()),
+                )
+            )
+            existing_runbook_workflow_ids.add(item.workflow_id)
 
     proposed_by_id: dict[str, dict[str, Any]] = {}
     for agent in result.agents:
