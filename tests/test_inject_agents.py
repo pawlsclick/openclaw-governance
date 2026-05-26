@@ -10,6 +10,7 @@ from openclaw_governance.inject_agents import (
     remove_stanza_from_text,
     render_stanza,
     resolve_inject_agent_ids,
+    run_inject,
 )
 
 
@@ -49,6 +50,20 @@ def test_resolve_inject_empty_list() -> None:
         inject_included=[],
     )
     assert resolve_inject_agent_ids(config) == set()
+
+
+def test_run_inject_defaults_to_synthetic_main(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+
+    assert run_inject(config, write=True) == 0
+    agents_md = config.openclaw_home / "workspace" / "AGENTS.md"
+    assert has_stanza(agents_md.read_text(encoding="utf-8"))
+
+
+def test_run_inject_accepts_synthetic_main_allowlist(tmp_path: Path) -> None:
+    config = _config(tmp_path, inject_included=["main"])
+
+    assert run_inject(config, write=True) == 0
 
 
 def test_remove_stanza_from_text() -> None:

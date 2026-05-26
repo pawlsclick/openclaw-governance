@@ -128,11 +128,7 @@ def collect_agent_targets(config: GovernanceConfig) -> list[AgentAgentsTarget]:
 
 
 def known_agent_ids(config: GovernanceConfig) -> set[str]:
-    try:
-        openclaw_config = load_openclaw_config(config)
-        return {agent.agent_id for agent in parse_agents_from_config(openclaw_config, config)}
-    except (FileNotFoundError, ValueError):
-        return set()
+    return {target.agent_id for target in collect_agent_targets(config)}
 
 
 def resolve_inject_agent_ids(
