@@ -61,3 +61,51 @@ def test_materialize_links_existing_runbook(tmp_path: Path) -> None:
     workflows = registry["workflows"]
     assert any(item["id"] == "main.workflow_registry_drift_check" for item in workflows)
     assert (gov / "workflows/runbooks/main.workflow_registry_drift_check.md").is_file()
+
+
+def test_materialize_preserves_existing_runbook_runtime_status(tmp_path: Path) -> None:
+    gov = tmp_path / "gov"
+    runbooks = gov / "workflows" / "runbooks"
+    runbooks.mkdir(parents=True)
+    (runbooks / "main.workflow_registry_drift_check.md").write_text(
+        "# Workflow Registry Drift Check\n",
+        encoding="utf-8",
+    )
+    registry_path = gov / "workflows" / "registry.yaml"
+    registry_path.write_text(
+        yaml.dump(
+            {
+                "generated_at": "2025-01-01T00:00:00Z",
+                "version": 0.1,
+                "agents": [],
+                "raci_domains": {},
+                "workflows": [
+                    {
+                        "id": "main.workflow_registry_drift_check",
+                        "runtime_status": "active",
+                    }
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    config = GovernanceConfig(openclaw_home=tmp_path / "oc", governance_root=gov)
+    result = DiscoveryResult(
+        generated_at="2026-01-01T00:00:00Z",
+        openclaw_home=str(config.openclaw_home),
+        openclaw_config_path="/tmp/openclaw.json",
+        agents=[],
+        runbooks=scan_runbooks_on_disk(config, set()),
+    )
+
+    materialize_from_discovery(result, config, write=True)
+
+    registry = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+    workflow = next(
+        item
+        for item in registry["workflows"]
+        if item["id"] == "main.workflow_registry_drift_check"
+    )
+    assert workflow["runtime_status"] == "active"

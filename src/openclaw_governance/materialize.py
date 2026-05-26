@@ -266,7 +266,10 @@ def merge_workflows(
             # Preserve operator edits; refresh cron ids and runtime from discovery.
             if workflow.get("cron_job_ids"):
                 current["cron_job_ids"] = workflow["cron_job_ids"]
-            if workflow.get("runtime_status"):
+            if (
+                workflow.get("orchestration") == "openclaw_cron"
+                and workflow.get("runtime_status")
+            ):
                 current["runtime_status"] = workflow["runtime_status"]
             updated.append(workflow_id)
         else:
@@ -303,6 +306,12 @@ def materialize_from_discovery(
         import_summary = import_workspace_runbooks(result.workspace_runbooks, config)
         summary["imported_runbooks"] = import_summary["imported_runbooks"]
         summary["skipped_imported_runbooks"] = import_summary["skipped_imported_runbooks"]
+        imported_runbooks = set(import_summary["imported_runbooks"])
+        workspace_by_workflow = {
+            item.workflow_id: item
+            for item in result.workspace_runbooks
+            if item.target_runbook in imported_runbooks
+        }
         known_agent_ids = {agent.agent_id for agent in result.agents}
         governance_runbooks = scan_runbooks_on_disk(config, known_agent_ids)
     elif result.workspace_runbooks:

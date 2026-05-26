@@ -80,6 +80,38 @@ def test_import_workspace_runbook_on_write(tmp_path: Path) -> None:
     assert any(item["id"] == "finance.finance_risk" for item in registry["workflows"])
 
 
+def test_skipped_workspace_import_keeps_existing_runbook_metadata(tmp_path: Path) -> None:
+    gov = tmp_path / "gov"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    source = workspace / "daily-report-runbook.md"
+    source.write_text("# Daily Report\n\nWorkspace copy.\n", encoding="utf-8")
+
+    config = GovernanceConfig(openclaw_home=tmp_path / "oc", governance_root=gov)
+    agents = [DiscoveredAgent(agent_id="main", name="Main", role="main", workspace=str(workspace))]
+    found, _ = scan_workspace_runbooks_for_agents(agents, config)
+
+    dest = gov / found[0].target_runbook
+    dest.parent.mkdir(parents=True)
+    dest.write_text("# Daily Report\n\nExisting governance copy.\n", encoding="utf-8")
+
+    result = DiscoveryResult(
+        generated_at="2026-01-01T00:00:00Z",
+        openclaw_home=str(config.openclaw_home),
+        openclaw_config_path="/tmp/openclaw.json",
+        agents=agents,
+        workspace_runbooks=found,
+    )
+
+    summary = materialize_from_discovery(result, config, write=True)
+    assert summary["skipped_imported_runbooks"] == [found[0].target_runbook]
+
+    registry = yaml.safe_load((gov / "workflows/registry.yaml").read_text(encoding="utf-8"))
+    workflow = next(item for item in registry["workflows"] if item["id"] == found[0].workflow_id)
+    assert workflow["discovered_from"]["source"] == "runbook_on_disk"
+    assert workflow["source_docs"] == [found[0].target_runbook]
+
+
 def test_discover_dry_run_does_not_import(tmp_path: Path) -> None:
     gov = tmp_path / "gov"
     workspace = tmp_path / "workspace"
