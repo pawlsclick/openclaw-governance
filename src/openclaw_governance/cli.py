@@ -86,7 +86,13 @@ def cmd_regen(args: argparse.Namespace) -> int:
 
 
 def cmd_inject(args: argparse.Namespace) -> int:
-    return run_inject(resolve_config(args), write=args.write)
+    cli_agents = getattr(args, "agents", None) or None
+    return run_inject(
+        resolve_config(args),
+        write=args.write,
+        cli_agents=cli_agents,
+        prune=getattr(args, "prune", False),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -125,6 +131,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     inject_parser = sub.add_parser("inject-agents", help="Inject governance stanza into agent AGENTS.md files")
     inject_parser.add_argument("--write", action="store_true")
+    inject_parser.add_argument(
+        "--agent",
+        action="append",
+        dest="agents",
+        metavar="ID",
+        help="Inject only this agent (repeatable). Overrides agents.inject_included for this run.",
+    )
+    inject_parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="Remove governance stanza from agents not in the inject set",
+    )
     inject_parser.set_defaults(func=cmd_inject)
 
     return parser
