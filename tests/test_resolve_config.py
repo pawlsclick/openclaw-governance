@@ -62,3 +62,17 @@ def test_resolve_config_finds_explicit_governance_root(tmp_path: Path, monkeypat
 
     config = resolve_config(argparse.Namespace(root=None))
     assert config.governance_root == gov.resolve()
+
+
+def test_ship_subcommands_parse() -> None:
+    from openclaw_governance.cli import parse_args
+
+    start = parse_args(["ship", "start", "--root", "/tmp/gov"])
+    assert start.command == "ship"
+    assert start.ship_command == "start"
+    assert start.root == "/tmp/gov"
+
+    commit = parse_args(["ship", "commit", "--push", "--root", "/tmp/gov"])
+    assert commit.ship_command == "commit"
+    assert commit.push is True
+    assert commit.no_push is False

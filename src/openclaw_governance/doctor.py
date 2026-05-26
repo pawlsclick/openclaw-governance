@@ -91,6 +91,25 @@ def run_doctor(config: GovernanceConfig) -> int:
     else:
         print("WARN git not on PATH (repo discovery limited)")
 
+    if config.remote_url:
+        if shutil.which("gh"):
+            try:
+                proc = subprocess.run(
+                    ["gh", "auth", "status"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
+                if proc.returncode == 0:
+                    print("OK gh CLI authenticated (openclaw-gov ship commit --push)")
+                else:
+                    print("WARN gh not authenticated (ship commit --push needs gh auth login)")
+            except subprocess.TimeoutExpired:
+                print("WARN gh auth status timed out")
+        else:
+            print("NOTE gh not on PATH (install for openclaw-gov ship commit --push)")
+
     registry = config.registry_path
     if registry.is_file():
         print(f"OK registry: {registry}")

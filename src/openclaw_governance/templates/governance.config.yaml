@@ -6,6 +6,11 @@ governance_root: "GOVERNANCE_ROOT_PLACEHOLDER"
 # remote:
 #   url: "https://github.com/you/your-governance-repo.git"
 #   default_branch: main
+#
+# Git workflow for agents updating governance docs:
+#   openclaw-gov ship start   # branch from main BEFORE discover --write / regen --write
+#   ... make changes ...
+#   openclaw-gov ship commit  # validate, commit, ask before push/PR
 
 accountable_humans:
   - Operator
