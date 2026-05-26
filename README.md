@@ -23,9 +23,9 @@ flowchart TB
   GH -->|CI| DRIFT["governance-drift.yml\nregen --check · check"]
 ```
 
-## Install (v0.2.2)
+## Install (v0.2.1)
 
-Pinned release: `@v0.2.2`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
+Pinned release: `@v0.2.1`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
 
 ### Ubuntu / Debian (pipx — recommended)
 
@@ -37,14 +37,14 @@ sudo apt install -y pipx python3-venv
 pipx ensurepath
 # Log out/in, or: source ~/.profile
 
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.2"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.1"
 openclaw-gov --version
 ```
 
 **Upgrade** to a newer tag (pipx matches installs by full URL — use `--force` when the tag changes):
 
 ```bash
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.2" --force
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.1" --force
 ```
 
 `pipx upgrade openclaw-governance` alone does not change an existing git tag pin.
@@ -58,7 +58,7 @@ Avoid `pip install --break-system-packages` on the host Python unless you accept
 When you already work inside a virtualenv (or a image without PEP 668 restrictions):
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.2"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.1"
 ```
 
 ### Editable dev install
@@ -71,25 +71,22 @@ pip install -e ".[dev]"
 
 ## Quick start
 
-Default governance root: `~/.openclaw/governance`. Pass `--root PATH` to override.
-
 ```bash
 # 1. Initialize governance root (default: ~/.openclaw/governance)
 openclaw-gov init
 
-# 2. Set your GitHub remote and which agents get governance stanzas
-#    Edit ~/.openclaw/governance/governance.config.yaml
+# 2. Set your GitHub remote and which agents get governance stanzas (edit governance.config.yaml)
 
 # 3. Discover live state (dry-run; writes inventory snapshot only)
-openclaw-gov discover --root ~/.openclaw/governance
+openclaw-gov discover
 
-# 4. Materialize registry + runbook stubs (also scaffolds README.md if missing)
-openclaw-gov discover --write --root ~/.openclaw/governance
+# 4. Materialize registry + runbook stubs
+openclaw-gov discover --write
 
 # 5. Regenerate README tables and validate
-openclaw-gov regen --write --root ~/.openclaw/governance
-openclaw-gov check --root ~/.openclaw/governance
-openclaw-gov doctor --root ~/.openclaw/governance
+openclaw-gov regen --write
+openclaw-gov check
+openclaw-gov doctor
 
 # 6. Inject governance stanza into selected agent AGENTS.md files
 openclaw-gov inject-agents --write
