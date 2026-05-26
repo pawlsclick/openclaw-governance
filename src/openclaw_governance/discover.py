@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -12,6 +11,16 @@ from typing import Any
 
 from openclaw_governance.config import GovernanceConfig
 from openclaw_governance.paths import openclaw_config_path
+from openclaw_governance.runbook_import import (
+    scan_workspace_runbooks,
+    workflow_id_from_workspace_runbook,
+)
+from openclaw_governance.runbook_utils import (
+    agent_id_from_workflow_id,
+    parse_runbook_title,
+    slugify,
+    workflow_id_from_path,
+)
 
 
 @dataclass
@@ -36,11 +45,33 @@ class DiscoveredAgent:
 
 
 @dataclass
+class DiscoveredRunbook:
+    workflow_id: str
+    runbook: str
+    agent_id: str
+    title: str
+    path: str
+    source: str = "governance"
+
+
+@dataclass
+class DiscoveredWorkspaceRunbook:
+    agent_id: str
+    workflow_id: str
+    title: str
+    source_path: str
+    workspace_relative: str
+    target_runbook: str
+
+
+@dataclass
 class DiscoveryResult:
     generated_at: str
     openclaw_home: str
     openclaw_config_path: str
     agents: list[DiscoveredAgent]
+    runbooks: list[DiscoveredRunbook] = field(default_factory=list)
+    workspace_runbooks: list[DiscoveredWorkspaceRunbook] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -49,6 +80,28 @@ class DiscoveryResult:
             "openclaw_home": self.openclaw_home,
             "openclaw_config_path": self.openclaw_config_path,
             "warnings": self.warnings,
+            "runbooks": [
+                {
+                    "workflow_id": runbook.workflow_id,
+                    "runbook": runbook.runbook,
+                    "agent_id": runbook.agent_id,
+                    "title": runbook.title,
+                    "path": runbook.path,
+                    "source": runbook.source,
+                }
+                for runbook in self.runbooks
+            ],
+            "workspace_runbooks": [
+                {
+                    "agent_id": item.agent_id,
+                    "workflow_id": item.workflow_id,
+                    "title": item.title,
+                    "source_path": item.source_path,
+                    "workspace_relative": item.workspace_relative,
+                    "target_runbook": item.target_runbook,
+                }
+                for item in self.workspace_runbooks
+            ],
             "agents": [
                 {
                     "agent_id": agent.agent_id,
@@ -73,9 +126,79 @@ class DiscoveryResult:
         }
 
 
-def slugify(value: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "_", value.strip().lower()).strip("_")
-    return slug or "unnamed"
+def scan_runbooks_on_disk(
+    config: GovernanceConfig,
+    known_agent_ids: set[str],
+) -> list[DiscoveredRunbook]:
+    """Find runbook markdown files under workflows/runbooks/."""
+    runbooks_dir = config.runbooks_dir
+    if not runbooks_dir.is_dir():
+        return []
+
+    discovered: list[DiscoveredRunbook] = []
+    for path in sorted(runbooks_dir.glob("*.md")):
+        if not path.is_file():
+            continue
+        workflow_id = path.stem
+        if not workflow_id:
+            continue
+        discovered.append(
+            DiscoveredRunbook(
+                workflow_id=workflow_id,
+                runbook=f"workflows/runbooks/{path.name}",
+                agent_id=agent_id_from_workflow_id(workflow_id, known_agent_ids),
+                title=parse_runbook_title(path),
+                path=str(path.resolve()),
+            )
+        )
+    return discovered
+
+
+def scan_workspace_runbooks_for_agents(
+    agents: list[DiscoveredAgent],
+    config: GovernanceConfig,
+) -> tuple[list[DiscoveredWorkspaceRunbook], list[str]]:
+    """Locate *runbook*.md files in agent workspaces (identify only)."""
+    if not config.discovery_scan_workspace_runbooks:
+        return [], []
+
+    warnings: list[str] = []
+    discovered: list[DiscoveredWorkspaceRunbook] = []
+    seen_workflow_ids: dict[str, str] = {}
+    governance_runbooks = config.runbooks_dir.resolve() if config.runbooks_dir.is_dir() else None
+
+    for agent in agents:
+        workspace = Path(agent.workspace)
+        for path in scan_workspace_runbooks(
+            agent.agent_id,
+            workspace,
+            glob_pattern=config.discovery_workspace_runbook_glob,
+            governance_runbooks_dir=governance_runbooks,
+        ):
+            workflow_id = workflow_id_from_workspace_runbook(agent.agent_id, path)
+            if workflow_id in seen_workflow_ids:
+                prior = seen_workflow_ids[workflow_id]
+                warnings.append(
+                    f"duplicate workflow id `{workflow_id}` from {prior} and {path}; keeping first"
+                )
+                continue
+            seen_workflow_ids[workflow_id] = str(path)
+            try:
+                relative = path.relative_to(workspace).as_posix()
+            except ValueError:
+                relative = path.name
+            target = f"workflows/runbooks/{workflow_id}.md"
+            discovered.append(
+                DiscoveredWorkspaceRunbook(
+                    agent_id=agent.agent_id,
+                    workflow_id=workflow_id,
+                    title=parse_runbook_title(path),
+                    source_path=str(path),
+                    workspace_relative=relative,
+                    target_runbook=target,
+                )
+            )
+    return discovered, warnings
 
 
 def load_openclaw_config(config: GovernanceConfig) -> dict[str, Any]:
@@ -255,11 +378,18 @@ def discover(config: GovernanceConfig) -> DiscoveryResult:
         if workspace.is_dir():
             agent.script_paths = scan_scripts(workspace, config.discovery_script_globs)
 
+    known_agent_ids = {agent.agent_id for agent in agents}
+    runbooks = scan_runbooks_on_disk(config, known_agent_ids)
+    workspace_runbooks, workspace_warnings = scan_workspace_runbooks_for_agents(agents, config)
+    warnings.extend(workspace_warnings)
+
     return DiscoveryResult(
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         openclaw_home=str(config.openclaw_home),
         openclaw_config_path=str(openclaw_config_path(config.openclaw_home)),
         agents=agents,
+        runbooks=runbooks,
+        workspace_runbooks=workspace_runbooks,
         warnings=warnings,
     )
 
@@ -274,9 +404,20 @@ def print_discovery_report(result: DiscoveryResult) -> None:
     print(f"Agents: {len(result.agents)}")
     cron_total = sum(len(agent.cron_jobs) for agent in result.agents)
     print(f"Cron jobs: {cron_total}")
+    print(f"Runbooks in governance root: {len(result.runbooks)}")
+    print(f"Runbooks in agent workspaces: {len(result.workspace_runbooks)}")
     for warning in result.warnings:
         print(f"WARN {warning}")
     print("")
+    for runbook in result.runbooks:
+        print(f"  [governance] {runbook.runbook} -> `{runbook.workflow_id}` ({runbook.title})")
+    for item in result.workspace_runbooks:
+        print(
+            f"  [workspace/{item.agent_id}] {item.workspace_relative} -> "
+            f"`{item.workflow_id}` => {item.target_runbook}"
+        )
+    if result.runbooks or result.workspace_runbooks:
+        print("")
     for agent in result.agents:
         print(f"- {agent.agent_id}: workspace={agent.workspace} crons={len(agent.cron_jobs)} scripts={len(agent.script_paths)}")
         for job in agent.cron_jobs:

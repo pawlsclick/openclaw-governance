@@ -10,7 +10,14 @@ from typing import Any
 import yaml
 
 from openclaw_governance.config import GovernanceConfig
-from openclaw_governance.discover import DiscoveryResult, workflow_id_for_cron
+from openclaw_governance.discover import (
+    DiscoveredRunbook,
+    DiscoveredWorkspaceRunbook,
+    DiscoveryResult,
+    scan_runbooks_on_disk,
+    workflow_id_for_cron,
+)
+from openclaw_governance.runbook_import import render_imported_runbook
 from openclaw_governance.registry_common import UniqueKeyLoader, construct_mapping_without_duplicate_keys, load_registry
 
 UniqueKeyLoader.add_constructor(
@@ -91,6 +98,85 @@ def default_code_management() -> dict[str, Any]:
     }
 
 
+def workflow_entry_from_runbook(
+    runbook: DiscoveredRunbook,
+    *,
+    workspace_source: DiscoveredWorkspaceRunbook | None = None,
+) -> dict[str, Any]:
+    discovered_from: dict[str, Any] = {
+        "source": "runbook_on_disk",
+        "path": runbook.path,
+    }
+    purpose = f"Discovered existing runbook `{runbook.runbook}`. Review and promote to active when verified."
+    if workspace_source is not None:
+        discovered_from = {
+            "source": "workspace_runbook",
+            "path": workspace_source.source_path,
+            "workspace_relative": workspace_source.workspace_relative,
+        }
+        purpose = (
+            f"Imported workspace runbook `{workspace_source.workspace_relative}` into `{runbook.runbook}`."
+        )
+    return {
+        "id": runbook.workflow_id,
+        "agent": runbook.agent_id,
+        "title": runbook.title,
+        "status": "discovered",
+        "purpose": purpose,
+        "trigger": "see runbook (discovered on disk)",
+        "orchestration": "unknown",
+        "inputs": [],
+        "outputs": [],
+        "tools_or_scripts": [],
+        "source_docs": [runbook.runbook, workspace_source.source_path] if workspace_source else [runbook.runbook],
+        "cron_job_ids": [],
+        "risk_level": "low",
+        "approval_required": False,
+        "success_criteria": ["Runbook documents verification steps (review and refine)."],
+        "failure_modes": ["Registry entry out of sync with runbook (re-run discover --write)."],
+        "tests": [],
+        "runbook": runbook.runbook,
+        "runtime_status": "manual",
+        "code_management": default_code_management(),
+        "discovered_from": discovered_from,
+    }
+
+
+def import_workspace_runbooks(
+    workspace_runbooks: list[DiscoveredWorkspaceRunbook],
+    config: GovernanceConfig,
+) -> dict[str, list[str]]:
+    """Convert workspace runbooks into the governance runbooks directory."""
+    summary: dict[str, list[str]] = {
+        "imported_runbooks": [],
+        "skipped_imported_runbooks": [],
+    }
+    if not workspace_runbooks:
+        return summary
+
+    config.runbooks_dir.mkdir(parents=True, exist_ok=True)
+    for item in workspace_runbooks:
+        dest = config.governance_root / item.target_runbook
+        if dest.is_file():
+            summary["skipped_imported_runbooks"].append(item.target_runbook)
+            continue
+        source_path = Path(item.source_path)
+        body = source_path.read_text(encoding="utf-8")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(
+            render_imported_runbook(
+                workflow_id=item.workflow_id,
+                agent_id=item.agent_id,
+                title=item.title,
+                source_path=source_path,
+                source_body=body,
+            ),
+            encoding="utf-8",
+        )
+        summary["imported_runbooks"].append(item.target_runbook)
+    return summary
+
+
 def workflow_entry_from_cron(
     agent_id: str,
     job: Any,
@@ -165,6 +251,18 @@ def default_raci_domains(agent_ids_list: list[str]) -> dict[str, Any]:
     }
 
 
+CRON_DISCOVERY_REFRESH_FIELDS = (
+    "agent",
+    "purpose",
+    "trigger",
+    "orchestration",
+    "success_criteria",
+    "failure_modes",
+    "tests",
+    "discovered_from",
+)
+
+
 def merge_workflows(
     existing: list[dict[str, Any]],
     proposed: list[dict[str, Any]],
@@ -177,10 +275,18 @@ def merge_workflows(
         workflow_id = str(workflow.get("id"))
         if workflow_id in by_id:
             current = by_id[workflow_id]
-            # Preserve operator edits; refresh cron ids and runtime from discovery.
+            # Preserve operator edits; refresh discovery-owned cron fields when
+            # a runbook-discovered row is later matched to a real cron job.
             if workflow.get("cron_job_ids"):
                 current["cron_job_ids"] = workflow["cron_job_ids"]
-            if workflow.get("runtime_status"):
+            if (
+                workflow.get("orchestration") == "openclaw_cron"
+                and workflow.get("runtime_status")
+            ):
+                if current.get("orchestration") != "openclaw_cron":
+                    for field in CRON_DISCOVERY_REFRESH_FIELDS:
+                        if field in workflow:
+                            current[field] = workflow[field]
                 current["runtime_status"] = workflow["runtime_status"]
             updated.append(workflow_id)
         else:
@@ -198,18 +304,68 @@ def materialize_from_discovery(
     write: bool = False,
 ) -> dict[str, Any]:
     """Build or update registry + runbooks. Returns summary dict."""
+    workspace_by_workflow = {item.workflow_id: item for item in result.workspace_runbooks}
     summary: dict[str, Any] = {
         "write": write,
         "created_workflows": [],
         "updated_workflows": [],
+        "created_workflows_from_runbooks": [],
         "created_runbooks": [],
         "skipped_runbooks": [],
+        "imported_runbooks": [],
+        "skipped_imported_runbooks": [],
+        "runbooks_in_governance": len(result.runbooks),
+        "runbooks_in_workspaces": len(result.workspace_runbooks),
     }
 
-    proposed_workflows: list[dict[str, Any]] = []
+    known_agent_ids = {agent.agent_id for agent in result.agents}
+    governance_runbooks = list(result.runbooks)
+    if write and result.workspace_runbooks:
+        import_summary = import_workspace_runbooks(result.workspace_runbooks, config)
+        summary["imported_runbooks"] = import_summary["imported_runbooks"]
+        summary["skipped_imported_runbooks"] = import_summary["skipped_imported_runbooks"]
+        imported_runbooks = set(import_summary["imported_runbooks"])
+        workspace_by_workflow = {
+            item.workflow_id: item
+            for item in result.workspace_runbooks
+            if item.target_runbook in imported_runbooks
+        }
+        governance_runbooks = scan_runbooks_on_disk(config, known_agent_ids)
+    elif result.workspace_runbooks:
+        existing_runbook_workflow_ids = {runbook.workflow_id for runbook in governance_runbooks}
+        for item in result.workspace_runbooks:
+            if item.workflow_id in existing_runbook_workflow_ids:
+                continue
+            target = config.governance_root / item.target_runbook
+            if target.is_file():
+                continue
+            governance_runbooks.append(
+                DiscoveredRunbook(
+                    workflow_id=item.workflow_id,
+                    runbook=item.target_runbook,
+                    agent_id=item.agent_id,
+                    title=item.title,
+                    path=str(target.resolve()),
+                )
+            )
+            existing_runbook_workflow_ids.add(item.workflow_id)
+
+    proposed_by_id: dict[str, dict[str, Any]] = {}
     for agent in result.agents:
         for job in agent.cron_jobs:
-            proposed_workflows.append(workflow_entry_from_cron(agent.agent_id, job, config))
+            entry = workflow_entry_from_cron(agent.agent_id, job, config)
+            proposed_by_id[str(entry["id"])] = entry
+
+    for runbook in governance_runbooks:
+        if runbook.workflow_id in proposed_by_id:
+            continue
+        workspace_source = workspace_by_workflow.get(runbook.workflow_id)
+        proposed_by_id[runbook.workflow_id] = workflow_entry_from_runbook(
+            runbook,
+            workspace_source=workspace_source,
+        )
+
+    proposed_workflows = list(proposed_by_id.values())
 
     registry_path = config.registry_path
     if registry_path.is_file():
@@ -238,10 +394,23 @@ def materialize_from_discovery(
     registry["workflows"] = merged
     summary["created_workflows"] = created
     summary["updated_workflows"] = updated
+    runbook_workflow_ids = {runbook.workflow_id for runbook in governance_runbooks}
+    summary["created_workflows_from_runbooks"] = [
+        workflow_id for workflow_id in created if workflow_id in runbook_workflow_ids
+    ]
 
     if not write:
         summary["would_write_registry"] = str(registry_path)
         summary["proposed_workflow_count"] = len(proposed_workflows)
+        existing_ids = {str(item.get("id")) for item in existing_workflows if isinstance(item, dict)}
+        summary["would_link_runbooks"] = [
+            runbook.workflow_id for runbook in governance_runbooks if runbook.workflow_id not in existing_ids
+        ]
+        summary["would_import_runbooks"] = [
+            item.target_runbook
+            for item in result.workspace_runbooks
+            if not (config.governance_root / item.target_runbook).is_file()
+        ]
         return summary
 
     config.runbooks_dir.mkdir(parents=True, exist_ok=True)
@@ -285,7 +454,19 @@ def materialize_from_discovery(
 
     inventory_path = config.governance_root / "workflows" / "discovered-inventory.json"
     inventory_path.parent.mkdir(parents=True, exist_ok=True)
-    inventory_path.write_text(json.dumps(result.to_dict(), indent=2) + "\n", encoding="utf-8")
+    inventory_result = DiscoveryResult(
+        generated_at=result.generated_at,
+        openclaw_home=result.openclaw_home,
+        openclaw_config_path=result.openclaw_config_path,
+        agents=result.agents,
+        runbooks=scan_runbooks_on_disk(config, known_agent_ids),
+        workspace_runbooks=result.workspace_runbooks,
+        warnings=result.warnings,
+    )
+    inventory_path.write_text(
+        json.dumps(inventory_result.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
     summary["inventory_path"] = str(inventory_path)
     summary["registry_path"] = str(registry_path)
     return summary

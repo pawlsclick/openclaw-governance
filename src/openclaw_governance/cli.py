@@ -60,9 +60,30 @@ def cmd_discover(args: argparse.Namespace) -> int:
         print(f"created workflows: {len(summary.get('created_workflows', []))}")
         print(f"updated workflows: {len(summary.get('updated_workflows', []))}")
         print(f"created runbooks: {len(summary.get('created_runbooks', []))}")
+        linked = summary.get("created_workflows_from_runbooks") or []
+        if linked:
+            print(f"linked registry from existing runbooks: {len(linked)}")
+        imported = summary.get("imported_runbooks") or []
+        if imported:
+            print(f"imported workspace runbooks: {len(imported)}")
+        skipped_import = summary.get("skipped_imported_runbooks") or []
+        if skipped_import:
+            print(f"skipped workspace imports (already exist): {len(skipped_import)}")
     else:
         print("")
         print("dry-run only (no files written). Use --write to materialize registry + runbooks.")
+        in_gov = summary.get("runbooks_in_governance")
+        in_ws = summary.get("runbooks_in_workspaces")
+        if in_gov is not None:
+            print(f"runbooks in governance root: {in_gov}")
+        if in_ws:
+            print(f"runbooks in agent workspaces: {in_ws}")
+        would_link = summary.get("would_link_runbooks") or []
+        if would_link:
+            print(f"would add registry entries for runbooks: {len(would_link)}")
+        would_import = summary.get("would_import_runbooks") or []
+        if would_import:
+            print(f"would import workspace runbooks: {len(would_import)}")
 
     if not args.write and not args.json:
         out = config.governance_root / "workflows" / "discovered-inventory.json"
