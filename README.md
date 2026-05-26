@@ -13,7 +13,7 @@ flowchart TB
     GOV["~/.openclaw/governance\ngovernance.config.yaml"]
     WS["Agent workspaces\nAGENTS.md"]
   end
-  CLI["openclaw-gov CLI\ndiscover · regen · check · inject-agents"]
+  CLI["openclaw-gov CLI\ndiscover · regen · check · ship · inject-agents"]
   GH["GitHub remote\n(user-configured)"]
 
   OC --> CLI
@@ -23,9 +23,9 @@ flowchart TB
   GH -->|CI| DRIFT["governance-drift.yml\nregen --check · check"]
 ```
 
-## Install (v0.2.4)
+## Install (v0.3.0)
 
-Pinned release: `@v0.2.4`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
+Pinned release: `@v0.3.0`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
 
 ### Ubuntu / Debian (pipx — recommended)
 
@@ -37,14 +37,14 @@ sudo apt install -y pipx python3-venv
 pipx ensurepath
 # Log out/in, or: source ~/.profile
 
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.4"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.3.0"
 openclaw-gov --version
 ```
 
 **Upgrade** to a newer tag (pipx matches installs by full URL — use `--force` when the tag changes):
 
 ```bash
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.4" --force
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.3.0" --force
 ```
 
 `pipx upgrade openclaw-governance` alone does not change an existing git tag pin.
@@ -58,7 +58,7 @@ Avoid `pip install --break-system-packages` on the host Python unless you accept
 When you already work inside a virtualenv (or a image without PEP 668 restrictions):
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.4"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.3.0"
 ```
 
 ### Editable dev install
@@ -119,6 +119,30 @@ openclaw-gov discover --write --root .
 | `openclaw-gov inject-agents --write` | Add governance block to selected `AGENTS.md` files |
 | `openclaw-gov inject-agents --write --prune` | Inject selected agents and remove stanza elsewhere |
 | `openclaw-gov inject-agents --agent main --write` | Inject one agent (overrides config for this run) |
+| `openclaw-gov ship start` | Create/checkout feature branch from `main` **before** governance `--write` |
+| `openclaw-gov ship commit` | Validate, conventional commit, prompt to push/PR (`--push` / `--no-push`) |
+
+## Ship governance changes (git workflow)
+
+When updating governance documentation (registry, runbooks, README), **never commit on `main`**. Branch first, make changes, then commit:
+
+```bash
+# 1. Branch BEFORE any --write to the governance root
+openclaw-gov ship start --root ~/.openclaw/governance
+
+# 2. Make changes on the feature branch
+openclaw-gov discover --write --root ~/.openclaw/governance
+openclaw-gov regen --write --root ~/.openclaw/governance
+openclaw-gov check --root ~/.openclaw/governance
+
+# 3. Commit; prompts to push and open PR when run interactively
+openclaw-gov ship commit --root ~/.openclaw/governance
+
+# Non-interactive (agents): push and open PR explicitly
+openclaw-gov ship commit --root ~/.openclaw/governance --push
+```
+
+Requires a git repository at the governance root with `remote.url` configured. Push/PR needs `gh` authenticated (`gh auth login`).
 
 ## Configuration
 

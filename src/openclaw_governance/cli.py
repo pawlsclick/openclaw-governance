@@ -18,6 +18,7 @@ from openclaw_governance.materialize import materialize_from_discovery
 from openclaw_governance.paths import default_governance_root, default_openclaw_home, find_governance_root
 from openclaw_governance.regen_readme_agent_raci import run_regen_raci
 from openclaw_governance.regen_readme_summary import run_regen_summary
+from openclaw_governance.ship import run_ship_commit, run_ship_start
 
 
 def resolve_config(args: argparse.Namespace):
@@ -122,6 +123,40 @@ def cmd_inject(args: argparse.Namespace) -> int:
     )
 
 
+def _ship_common_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--dry-run", action="store_true", help="Print actions without changing git state")
+    parser.add_argument(
+        "--base",
+        help="Base branch name (default: remote.default_branch from governance.config.yaml)",
+    )
+
+
+def cmd_ship_start(args: argparse.Namespace) -> int:
+    config = resolve_config(args)
+    return run_ship_start(
+        config,
+        branch=getattr(args, "branch", None),
+        base=getattr(args, "base", None),
+        dry_run=args.dry_run,
+    )
+
+
+def cmd_ship_commit(args: argparse.Namespace) -> int:
+    config = resolve_config(args)
+    return run_ship_commit(
+        config,
+        message=getattr(args, "message", None),
+        base=getattr(args, "base", None),
+        push=args.push,
+        no_push=args.no_push,
+        dry_run=args.dry_run,
+    )
+
+
+def cmd_ship(args: argparse.Namespace) -> int:
+    return int(args.ship_func(args))
+
+
 def _root_argument_help() -> str:
     return (
         "Governance root (directory with governance.config.yaml). "
@@ -196,6 +231,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Remove governance stanza from agents not in the inject set",
     )
     inject_parser.set_defaults(func=cmd_inject)
+
+    ship_parser = sub.add_parser(
+        "ship",
+        parents=[common],
+        help="Git workflow: branch before governance writes, commit, optional push/PR",
+    )
+    ship_sub = ship_parser.add_subparsers(dest="ship_command", required=True)
+
+    ship_start = ship_sub.add_parser(
+        "start",
+        parents=[common],
+        help="Create/checkout feature branch from main before governance --write commands",
+    )
+    _ship_common_flags(ship_start)
+    ship_start.add_argument(
+        "--branch",
+        help="Feature branch name (default: governance/YYYY-MM-DD-sync)",
+    )
+    ship_start.set_defaults(ship_func=cmd_ship_start)
+
+    ship_commit = ship_sub.add_parser(
+        "commit",
+        parents=[common],
+        help="Validate, stage governance artifacts, conventional commit, optional push/PR",
+    )
+    _ship_common_flags(ship_commit)
+    ship_commit.add_argument("--message", "-m", help="Commit message (default: inferred from changes)")
+    ship_commit.add_argument("--push", action="store_true", help="Push branch and open PR without prompting")
+    ship_commit.add_argument("--no-push", action="store_true", help="Stop after commit; print push/PR commands")
+    ship_commit.set_defaults(ship_func=cmd_ship_commit)
+
+    ship_parser.set_defaults(func=cmd_ship)
 
     return parser
 
