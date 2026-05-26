@@ -23,9 +23,9 @@ flowchart TB
   GH -->|CI| DRIFT["governance-drift.yml\nregen --check · check"]
 ```
 
-## Install (v0.2.2)
+## Install (v0.2.4)
 
-Pinned release: `@v0.2.2`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
+Pinned release: `@v0.2.4`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
 
 ### Ubuntu / Debian (pipx — recommended)
 
@@ -37,14 +37,14 @@ sudo apt install -y pipx python3-venv
 pipx ensurepath
 # Log out/in, or: source ~/.profile
 
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.2"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.4"
 openclaw-gov --version
 ```
 
 **Upgrade** to a newer tag (pipx matches installs by full URL — use `--force` when the tag changes):
 
 ```bash
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.2" --force
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.4" --force
 ```
 
 `pipx upgrade openclaw-governance` alone does not change an existing git tag pin.
@@ -58,7 +58,7 @@ Avoid `pip install --break-system-packages` on the host Python unless you accept
 When you already work inside a virtualenv (or a image without PEP 668 restrictions):
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.2"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.2.4"
 ```
 
 ### Editable dev install
@@ -132,6 +132,18 @@ openclaw-gov discover --write --root .
 - `agents.broadcast_excluded` — cron-only agents omitted from broadcast RACI
 - `agents.inject_included` — allowlist of agent ids that receive the governance stanza in `AGENTS.md`. **Omit the key** to inject all agents; **`[]`** injects none until you pass `--agent`
 - `discovery.*` — script globs and git repo scan toggles
+
+### Automatic RACI domains (no manual registry edits)
+
+On `discover --write`, the tool creates RACI domains from **whatever agents exist on your machine** — no product-specific names:
+
+| Discovered agent | Auto domain key | Workflow prefix |
+|------------------|-----------------|-----------------|
+| `billing-bot` | `billing_bot_ops` | `billing-bot.*` |
+| `research` | `research_ops` | `research.*` |
+| `main` (if present) | `main_ops` + shared `personal_ops` / `governance_registry` | `main.*` |
+
+Each workflow gets `raci_domain` inferred from its id prefix (or `agent` field). Existing domain blocks and explicit `raci_workflow_domains` entries are never overwritten. Customize naming with `domain_prefix_rules` in config (replaces built-in defaults when set).
 
 Example:
 

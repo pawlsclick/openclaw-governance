@@ -19,7 +19,14 @@ from openclaw_governance.discover import (
 )
 from openclaw_governance.governance_scaffold import ensure_governance_scaffold
 from openclaw_governance.runbook_import import render_imported_runbook
-from openclaw_governance.registry_common import UniqueKeyLoader, construct_mapping_without_duplicate_keys, load_registry
+from openclaw_governance.registry_common import (
+    UniqueKeyLoader,
+    construct_mapping_without_duplicate_keys,
+    effective_domain_prefix_rules,
+    ensure_raci_domains,
+    infer_workflow_raci_domain,
+    load_registry,
+)
 
 UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping_without_duplicate_keys
@@ -232,24 +239,21 @@ def agents_registry_entries(result: DiscoveryResult, config: GovernanceConfig) -
     return entries
 
 
-def default_raci_domains(agent_ids_list: list[str]) -> dict[str, Any]:
-    informed = sorted(set(agent_ids_list))
-    return {
-        "governance_registry": {
-            "title": "Workflow registry, runbooks, and governance PRs",
-            "responsible": "main" if "main" in informed else (informed[0] if informed else "main"),
-            "accountable": "Operator",
-            "consulted": [],
-            "informed": [agent_id for agent_id in informed if agent_id != "main"],
-        },
-        "personal_ops": {
-            "title": "Personal and workspace automations",
-            "responsible": "main" if "main" in informed else (informed[0] if informed else "main"),
-            "accountable": "Operator",
-            "consulted": [],
-            "informed": informed,
-        },
-    }
+def apply_inferred_raci_domain(
+    workflow: dict[str, Any],
+    registry: dict[str, Any],
+    prefix_rules: tuple[tuple[str, str], ...],
+) -> None:
+    if workflow.get("raci_domain"):
+        return
+    domain = infer_workflow_raci_domain(
+        str(workflow.get("id", "")),
+        str(workflow.get("agent", "")),
+        registry,
+        prefix_rules,
+    )
+    if domain:
+        workflow["raci_domain"] = domain
 
 
 CRON_DISCOVERY_REFRESH_FIELDS = (
@@ -384,14 +388,18 @@ def materialize_from_discovery(
     registry["generated_at"] = result.generated_at
     registry["agents"] = agents_registry_entries(result, config)
     agent_id_list = [entry["id"] for entry in registry["agents"]]
-    if not registry.get("raci_domains"):
-        registry["raci_domains"] = default_raci_domains(agent_id_list)
+    accountable = config.accountable_humans[0] if config.accountable_humans else "Operator"
+    ensure_raci_domains(registry, agent_id_list, accountable=accountable)
 
     existing_workflows = registry.get("workflows")
     if not isinstance(existing_workflows, list):
         existing_workflows = []
 
     merged, created, updated = merge_workflows(existing_workflows, proposed_workflows)
+    prefix_rules = effective_domain_prefix_rules(tuple(config.domain_prefix_rules), registry)
+    for workflow in merged:
+        if isinstance(workflow, dict):
+            apply_inferred_raci_domain(workflow, registry, prefix_rules)
     registry["workflows"] = merged
     summary["created_workflows"] = created
     summary["updated_workflows"] = updated

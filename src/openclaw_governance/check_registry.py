@@ -20,6 +20,7 @@ from openclaw_governance.registry_common import (
     load_registry,
     normalize_party_list,
     raci_domains,
+    effective_domain_prefix_rules,
     resolve_workflow_raci,
     resolve_workflow_raci_domain,
 )
@@ -263,7 +264,7 @@ def check_workflow_raci(
         return
 
     domains = raci_domains(registry)
-    prefix_rules = tuple(config.domain_prefix_rules)
+    prefix_rules = effective_domain_prefix_rules(tuple(config.domain_prefix_rules), registry)
     humans = set(config.accountable_humans)
     high_risk_ids: list[str] = []
 

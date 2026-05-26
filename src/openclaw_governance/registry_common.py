@@ -18,6 +18,30 @@ DEFAULT_DOMAIN_PREFIX_RULES: tuple[tuple[str, str], ...] = (
     ("main.", "personal_ops"),
 )
 
+
+def agent_raci_domain_key(agent_id: str) -> str:
+    """Default RACI domain for any discovered agent: normalize id + ``_ops`` suffix."""
+    slug = agent_id.strip().replace("-", "_")
+    return f"{slug}_ops"
+
+
+def agent_domain_prefix_rules(agent_ids: list[str]) -> tuple[tuple[str, str], ...]:
+    """Map ``{agent_id}.`` workflow prefixes to each agent's auto ops domain."""
+    rules: list[tuple[str, str]] = []
+    for agent_id in sorted(set(agent_ids)):
+        if not agent_id:
+            continue
+        rules.append((f"{agent_id}.", agent_raci_domain_key(agent_id)))
+    return tuple(rules)
+
+
+def effective_domain_prefix_rules(
+    config_rules: tuple[tuple[str, str], ...],
+    registry: dict[str, Any],
+) -> tuple[tuple[str, str], ...]:
+    """Config/default rules first, then per-agent rules from registry agents."""
+    return tuple(config_rules) + agent_domain_prefix_rules(agent_ids(registry))
+
 CORE_PLATFORM_DOMAINS = frozenset({"platform_notion", "platform_google"})
 
 
@@ -117,6 +141,79 @@ def resolve_workflow_raci_domain(
     for prefix, domain in rules:
         if workflow_id.startswith(prefix) or workflow_id == prefix.rstrip("."):
             return domain
+    return None
+
+
+def ensure_raci_domains(
+    registry: dict[str, Any],
+    agent_ids_list: list[str],
+    *,
+    accountable: str = "Operator",
+) -> None:
+    """Merge default RACI domains into registry without overwriting operator edits."""
+    defaults = default_raci_domains(agent_ids_list, accountable=accountable)
+    current = registry.get("raci_domains")
+    if not isinstance(current, dict):
+        current = {}
+    for key, value in defaults.items():
+        if key not in current:
+            current[key] = value
+    registry["raci_domains"] = current
+
+
+def default_raci_domains(
+    agent_ids_list: list[str],
+    *,
+    accountable: str = "Operator",
+) -> dict[str, Any]:
+    informed = sorted(set(agent_ids_list))
+    main_responsible = "main" if "main" in informed else (informed[0] if informed else "main")
+    domains: dict[str, Any] = {
+        "governance_registry": {
+            "title": "Workflow registry, runbooks, and governance PRs",
+            "responsible": main_responsible,
+            "accountable": accountable,
+            "consulted": [],
+            "informed": [agent_id for agent_id in informed if agent_id != "main"],
+        },
+        "personal_ops": {
+            "title": "Personal and workspace automations",
+            "responsible": main_responsible,
+            "accountable": accountable,
+            "consulted": [],
+            "informed": informed,
+        },
+    }
+    orchestrator = "main" if "main" in informed else main_responsible
+    for agent_id in informed:
+        domain_key = agent_raci_domain_key(agent_id)
+        if domain_key in domains:
+            continue
+        consulted = [orchestrator] if orchestrator != agent_id else []
+        domains[domain_key] = {
+            "title": f"{agent_id} agent workflows",
+            "responsible": agent_id,
+            "accountable": accountable,
+            "consulted": consulted,
+            "informed": [other for other in informed if other != agent_id],
+        }
+    return domains
+
+
+def infer_workflow_raci_domain(
+    workflow_id: str,
+    agent_id: str,
+    registry: dict[str, Any],
+    prefix_rules: tuple[tuple[str, str], ...],
+) -> str | None:
+    """Resolve RACI domain for a workflow; returns None if no domain exists in registry."""
+    domain_key = resolve_workflow_raci_domain(workflow_id, registry, prefix_rules)
+    if not domain_key and agent_id:
+        domain_key = agent_raci_domain_key(agent_id)
+    if not domain_key:
+        return None
+    if domain_key in raci_domains(registry):
+        return domain_key
     return None
 
 
