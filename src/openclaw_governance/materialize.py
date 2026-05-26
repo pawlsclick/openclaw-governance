@@ -17,7 +17,6 @@ from openclaw_governance.discover import (
     scan_runbooks_on_disk,
     workflow_id_for_cron,
 )
-from openclaw_governance.governance_scaffold import ensure_governance_scaffold
 from openclaw_governance.runbook_import import render_imported_runbook
 from openclaw_governance.registry_common import UniqueKeyLoader, construct_mapping_without_duplicate_keys, load_registry
 
@@ -413,10 +412,6 @@ def materialize_from_discovery(
             if not (config.governance_root / item.target_runbook).is_file()
         ]
         return summary
-
-    scaffolded = ensure_governance_scaffold(config)
-    if scaffolded:
-        summary["scaffolded_files"] = scaffolded
 
     config.runbooks_dir.mkdir(parents=True, exist_ok=True)
     registry_path.parent.mkdir(parents=True, exist_ok=True)

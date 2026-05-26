@@ -15,18 +15,15 @@ from openclaw_governance.doctor import run_doctor
 from openclaw_governance.init_cmd import run_init
 from openclaw_governance.inject_agents import run_inject
 from openclaw_governance.materialize import materialize_from_discovery
-from openclaw_governance.paths import default_governance_root, default_openclaw_home, find_governance_root
+from openclaw_governance.paths import find_governance_root
 from openclaw_governance.regen_readme_agent_raci import run_regen_raci
 from openclaw_governance.regen_readme_summary import run_regen_summary
 
 
 def resolve_config(args: argparse.Namespace):
-    if args.root:
-        root = Path(args.root).resolve()
-    else:
-        root = find_governance_root()
-        if root is None:
-            root = default_governance_root(default_openclaw_home())
+    root = Path(args.root).resolve() if args.root else find_governance_root()
+    if root is None:
+        root = Path.cwd().resolve()
     return load_config(root)
 
 
@@ -63,9 +60,6 @@ def cmd_discover(args: argparse.Namespace) -> int:
         print(f"created workflows: {len(summary.get('created_workflows', []))}")
         print(f"updated workflows: {len(summary.get('updated_workflows', []))}")
         print(f"created runbooks: {len(summary.get('created_runbooks', []))}")
-        scaffolded = summary.get("scaffolded_files") or []
-        if scaffolded:
-            print(f"scaffolded missing files: {len(scaffolded)} (e.g. README.md)")
         linked = summary.get("created_workflows_from_runbooks") or []
         if linked:
             print(f"linked registry from existing runbooks: {len(linked)}")

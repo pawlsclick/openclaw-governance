@@ -27,19 +27,12 @@ def default_governance_root(openclaw_home: Path) -> Path:
     return openclaw_home / "governance"
 
 
-def is_governance_root(directory: Path) -> bool:
-    """True when directory looks like an openclaw-gov governance root."""
-    if (directory / "governance.config.yaml").is_file():
-        return True
-    if (directory / "README.md").is_file() and (directory / "workflows" / "registry.yaml").is_file():
-        return True
-    return False
-
-
 def find_governance_root(start: Path | None = None) -> Path | None:
-    """Walk up from start (or cwd) looking for a governance root."""
+    """Walk up from start (or cwd) looking for governance.config.yaml."""
     current = (start or Path.cwd()).resolve()
     for directory in [current, *current.parents]:
-        if is_governance_root(directory):
+        if (directory / "governance.config.yaml").is_file():
+            return directory
+        if (directory / "workflows" / "registry.yaml").is_file():
             return directory
     return None
