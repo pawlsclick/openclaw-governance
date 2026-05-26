@@ -2,11 +2,19 @@
 openclaw_home: "OPENCLAW_HOME_PLACEHOLDER"
 governance_root: "GOVERNANCE_ROOT_PLACEHOLDER"
 
+# GitHub (or other) remote where you push this governance root
+# remote:
+#   url: "https://github.com/you/your-governance-repo.git"
+#   default_branch: main
+
 accountable_humans:
   - Operator
 
 agents:
   broadcast_excluded: []
+  # Stanza injection allowlist. Omit key = all agents; [] = none.
+  # inject_included:
+  #   - main
 
 discovery:
   scan_git_repos: true

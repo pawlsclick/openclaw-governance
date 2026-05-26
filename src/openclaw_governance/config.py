@@ -19,6 +19,9 @@ class GovernanceConfig:
     accountable_humans: list[str] = field(default_factory=list)
     agent_default_accountable: dict[str, str] = field(default_factory=dict)
     raci_broadcast_excluded: list[str] = field(default_factory=list)
+    inject_included: list[str] | None = None
+    remote_url: str | None = None
+    remote_default_branch: str = "main"
     domain_prefix_rules: list[tuple[str, str]] = field(default_factory=lambda: list(DEFAULT_DOMAIN_PREFIX_RULES))
     discovery_scan_git_repos: bool = True
     discovery_script_globs: list[str] = field(default_factory=lambda: ["scripts/**/*.py", "automation/**/*.py"])
@@ -72,6 +75,7 @@ def load_config(
         gov_root = default_governance_root(home)
 
     agents_cfg = data.get("agents") if isinstance(data.get("agents"), dict) else {}
+    remote_cfg = data.get("remote") if isinstance(data.get("remote"), dict) else {}
     discovery_cfg = data.get("discovery") if isinstance(data.get("discovery"), dict) else {}
 
     accountable = data.get("accountable_humans")
@@ -86,6 +90,26 @@ def load_config(
     if not isinstance(excluded, list):
         excluded = []
 
+    inject_included: list[str] | None = None
+    if isinstance(agents_cfg, dict) and "inject_included" in agents_cfg:
+        raw_inject = agents_cfg.get("inject_included")
+        if isinstance(raw_inject, list):
+            inject_included = [str(item) for item in raw_inject]
+        else:
+            inject_included = []
+
+    remote_url: str | None = None
+    if isinstance(remote_cfg, dict):
+        raw_url = remote_cfg.get("url")
+        if isinstance(raw_url, str) and raw_url.strip():
+            remote_url = raw_url.strip()
+
+    remote_branch = "main"
+    if isinstance(remote_cfg, dict):
+        raw_branch = remote_cfg.get("default_branch")
+        if isinstance(raw_branch, str) and raw_branch.strip():
+            remote_branch = raw_branch.strip()
+
     script_globs = discovery_cfg.get("scan_script_globs")
     if not isinstance(script_globs, list):
         script_globs = ["scripts/**/*.py", "automation/**/*.py"]
@@ -96,6 +120,9 @@ def load_config(
         accountable_humans=[str(item) for item in accountable],
         agent_default_accountable={str(k): str(v) for k, v in agent_accountable.items()},
         raci_broadcast_excluded=[str(item) for item in excluded],
+        inject_included=inject_included,
+        remote_url=remote_url,
+        remote_default_branch=remote_branch,
         domain_prefix_rules=_parse_prefix_rules(data.get("domain_prefix_rules")),
         discovery_scan_git_repos=bool(discovery_cfg.get("scan_git_repos", True)),
         discovery_script_globs=[str(item) for item in script_globs],

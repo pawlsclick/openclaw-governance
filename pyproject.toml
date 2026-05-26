@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openclaw-governance"
-version = "0.1.0"
+version = "0.2.0"
 description = "Discovery, validation, and runbook generation for OpenClaw multi-agent governance"
 readme = "README.md"
 license = { text = "MIT" }

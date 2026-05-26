@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from pathlib import Path
 
 from openclaw_governance.config import GovernanceConfig
+from openclaw_governance.inject_agents import known_agent_ids
 from openclaw_governance.paths import openclaw_config_path
+from openclaw_governance.remote import get_git_origin, normalize_git_remote, validate_remote_url
 
 try:
     import yaml  # noqa: F401
@@ -37,6 +38,37 @@ def run_doctor(config: GovernanceConfig) -> int:
         ok = False
     else:
         print("OK PyYAML available")
+
+    if config.remote_url:
+        remote_error = validate_remote_url(config.remote_url)
+        if remote_error:
+            print(f"ERROR remote.url invalid: {remote_error}")
+            ok = False
+        else:
+            print(f"OK remote.url: {config.remote_url}")
+            origin = get_git_origin(config.governance_root)
+            if origin is None:
+                print("NOTE governance root is not a git repo (or has no origin)")
+            elif normalize_git_remote(origin) != normalize_git_remote(config.remote_url):
+                print(f"WARN git origin differs from remote.url")
+                print(f"     config:  {config.remote_url}")
+                print(f"     origin:  {origin}")
+            else:
+                print("OK git origin matches remote.url")
+    else:
+        print("NOTE remote.url not set (add under remote: in governance.config.yaml)")
+
+    if config.inject_included is None:
+        print("OK agents.inject_included: (omit) — all agents eligible for stanza injection")
+    elif not config.inject_included:
+        print("OK agents.inject_included: [] — stanza injection disabled unless --agent is passed")
+    else:
+        print(f"OK agents.inject_included: {', '.join(config.inject_included)}")
+        known = known_agent_ids(config)
+        unknown = sorted(set(config.inject_included) - known)
+        if unknown:
+            print(f"WARN unknown agent ids in inject_included: {', '.join(unknown)}")
+            ok = False
 
     if shutil.which("openclaw"):
         try:
