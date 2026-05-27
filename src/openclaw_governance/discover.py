@@ -408,7 +408,7 @@ def parse_cron_jobs(
 
     for job in jobs:
         job_id = str(job.get("id", ""))
-        name = str(job.get("name") or job_id or "unnamed")
+        name = str(job.get("name") or job.get("id") or "unnamed")
         enabled = bool(job.get("enabled", True))
         sched = job.get("schedule")
         if isinstance(sched, dict):

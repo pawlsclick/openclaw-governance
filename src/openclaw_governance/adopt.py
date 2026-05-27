@@ -147,7 +147,7 @@ def _adopt_config_file(
         if isinstance(existing, dict):
             existing["target_after"] = value
         else:
-            diff["path_rewrites"][key] = value
+            diff["path_rewrites"][key] = {"target_after": value}
 
     with target_path.open("w", encoding="utf-8") as handle:
         yaml.dump(merged, handle, sort_keys=False, allow_unicode=True)
