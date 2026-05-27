@@ -290,6 +290,8 @@ def _print_adoption_report(report: dict[str, Any]) -> None:
         print(f"config keys overwritten from source: {', '.join(config_diff['overwritten'])}")
     if config_diff.get("kept_from_target"):
         print(f"config keys kept from target: {', '.join(config_diff['kept_from_target'])}")
+    if config_diff.get("dropped_from_target"):
+        print(f"config keys dropped from target: {', '.join(config_diff['dropped_from_target'])}")
     if report.get("report_path"):
         print(f"report: {report['report_path']}")
     if report.get("registry_backup"):
