@@ -77,11 +77,11 @@ def inject_file(path: Path, stanza: str, *, write: bool) -> str:
         end = text.index(END) + len(END)
         stanza_body = stanza
         if not stanza_body.endswith("\n") and end < len(text) and text[end : end + 1] not in ("", "\n"):
-            pass
+            stanza_body += "\n"
         updated = text[:start] + stanza_body + text[end:]
         action = "updated" if updated != text else "unchanged"
     else:
-        separator = "\n\n" if text.endswith("\n") else "\n\n"
+        separator = "\n" if text.endswith("\n") else "\n\n"
         suffix = stanza if stanza.endswith("\n") else stanza + "\n"
         updated = text + separator + suffix
         action = "appended"
