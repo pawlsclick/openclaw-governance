@@ -64,47 +64,49 @@ def cmd_config_validate(args: argparse.Namespace) -> int:
     return run_validate_config(resolve_config(args))
 
 
-def _print_discover_materialization(summary: dict[str, Any], *, write: bool, staged: bool) -> None:
+def _print_discover_materialization(
+    summary: dict[str, Any], *, write: bool, staged: bool, file=sys.stdout
+) -> None:
     if write:
-        print("", file=sys.stderr)
-        print(f"wrote registry: {summary.get('registry_path')}", file=sys.stderr)
-        print(f"inventory: {summary.get('inventory_path')}", file=sys.stderr)
-        print(f"created workflows: {len(summary.get('created_workflows', []))}", file=sys.stderr)
-        print(f"updated workflows: {len(summary.get('updated_workflows', []))}", file=sys.stderr)
+        print("", file=file)
+        print(f"wrote registry: {summary.get('registry_path')}", file=file)
+        print(f"inventory: {summary.get('inventory_path')}", file=file)
+        print(f"created workflows: {len(summary.get('created_workflows', []))}", file=file)
+        print(f"updated workflows: {len(summary.get('updated_workflows', []))}", file=file)
         if staged:
             skipped = summary.get("skipped_protected_workflows") or []
-            print(f"skipped protected workflows: {len(skipped)}", file=sys.stderr)
-        print(f"created runbooks: {len(summary.get('created_runbooks', []))}", file=sys.stderr)
+            print(f"skipped protected workflows: {len(skipped)}", file=file)
+        print(f"created runbooks: {len(summary.get('created_runbooks', []))}", file=file)
         scaffolded = summary.get("scaffolded_files") or []
         if scaffolded:
-            print(f"scaffolded missing files: {len(scaffolded)} (e.g. README.md)", file=sys.stderr)
+            print(f"scaffolded missing files: {len(scaffolded)} (e.g. README.md)", file=file)
         linked = summary.get("created_workflows_from_runbooks") or []
         if linked:
-            print(f"linked registry from existing runbooks: {len(linked)}", file=sys.stderr)
+            print(f"linked registry from existing runbooks: {len(linked)}", file=file)
         imported = summary.get("imported_runbooks") or []
         if imported:
-            print(f"imported workspace runbooks: {len(imported)}", file=sys.stderr)
+            print(f"imported workspace runbooks: {len(imported)}", file=file)
         skipped_import = summary.get("skipped_imported_runbooks") or []
         if skipped_import:
-            print(f"skipped workspace imports (already exist): {len(skipped_import)}", file=sys.stderr)
+            print(f"skipped workspace imports (already exist): {len(skipped_import)}", file=file)
     else:
-        print("", file=sys.stderr)
+        print("", file=file)
         print(
             "dry-run only (no files written). Use --write or --staged to materialize registry + runbooks.",
-            file=sys.stderr,
+            file=file,
         )
         in_gov = summary.get("runbooks_in_governance")
         in_ws = summary.get("runbooks_in_workspaces")
         if in_gov is not None:
-            print(f"runbooks in governance root: {in_gov}", file=sys.stderr)
+            print(f"runbooks in governance root: {in_gov}", file=file)
         if in_ws:
-            print(f"runbooks in agent workspaces: {in_ws}", file=sys.stderr)
+            print(f"runbooks in agent workspaces: {in_ws}", file=file)
         would_link = summary.get("would_link_runbooks") or []
         if would_link:
-            print(f"would add registry entries for runbooks: {len(would_link)}", file=sys.stderr)
+            print(f"would add registry entries for runbooks: {len(would_link)}", file=file)
         would_import = summary.get("would_import_runbooks") or []
         if would_import:
-            print(f"would import workspace runbooks: {len(would_import)}", file=sys.stderr)
+            print(f"would import workspace runbooks: {len(would_import)}", file=file)
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
@@ -119,7 +121,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
         payload["materialization"] = summary
         sys.stdout.write(json.dumps(payload, indent=2) + "\n")
         print_discovery_report(result, file=sys.stderr)
-        _print_discover_materialization(summary, write=write, staged=args.staged)
+        _print_discover_materialization(summary, write=write, staged=args.staged, file=sys.stderr)
         return 0
 
     print_discovery_report(result)
