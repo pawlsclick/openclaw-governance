@@ -75,8 +75,8 @@ def inject_file(path: Path, stanza: str, *, write: bool) -> str:
     if has_stanza(text):
         start = text.index(BEGIN)
         end = text.index(END) + len(END)
-        stanza_body = stanza
-        if not stanza_body.endswith("\n") and end < len(text) and text[end : end + 1] not in ("", "\n"):
+        stanza_body = stanza.rstrip()
+        if end < len(text) and text[end : end + 1] not in ("", "\n"):
             stanza_body += "\n"
         updated = text[:start] + stanza_body + text[end:]
         action = "updated" if updated != text else "unchanged"
