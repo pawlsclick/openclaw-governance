@@ -410,7 +410,7 @@ def materialize_from_discovery(
 ) -> dict[str, Any]:
     """Build or update registry + runbooks. Returns summary dict."""
     write_registry = write or promote
-    staged_merge = promote or (write and staged)
+    staged_merge = promote or staged
     report_candidates = staged
 
     summary: dict[str, Any] = {
