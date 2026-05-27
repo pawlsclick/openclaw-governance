@@ -55,6 +55,7 @@ def cmd_adopt(args: argparse.Namespace) -> int:
         config,
         source_root=Path(args.from_source),
         write=not args.dry_run,
+        keep_target_config=getattr(args, "keep_target_config", False),
     )
     return code
 
@@ -63,56 +64,68 @@ def cmd_config_validate(args: argparse.Namespace) -> int:
     return run_validate_config(resolve_config(args))
 
 
+def _print_discover_materialization(summary: dict[str, Any], *, write: bool, staged: bool) -> None:
+    if write:
+        print("", file=sys.stderr)
+        print(f"wrote registry: {summary.get('registry_path')}", file=sys.stderr)
+        print(f"inventory: {summary.get('inventory_path')}", file=sys.stderr)
+        print(f"created workflows: {len(summary.get('created_workflows', []))}", file=sys.stderr)
+        print(f"updated workflows: {len(summary.get('updated_workflows', []))}", file=sys.stderr)
+        if staged:
+            skipped = summary.get("skipped_protected_workflows") or []
+            print(f"skipped protected workflows: {len(skipped)}", file=sys.stderr)
+        print(f"created runbooks: {len(summary.get('created_runbooks', []))}", file=sys.stderr)
+        scaffolded = summary.get("scaffolded_files") or []
+        if scaffolded:
+            print(f"scaffolded missing files: {len(scaffolded)} (e.g. README.md)", file=sys.stderr)
+        linked = summary.get("created_workflows_from_runbooks") or []
+        if linked:
+            print(f"linked registry from existing runbooks: {len(linked)}", file=sys.stderr)
+        imported = summary.get("imported_runbooks") or []
+        if imported:
+            print(f"imported workspace runbooks: {len(imported)}", file=sys.stderr)
+        skipped_import = summary.get("skipped_imported_runbooks") or []
+        if skipped_import:
+            print(f"skipped workspace imports (already exist): {len(skipped_import)}", file=sys.stderr)
+    else:
+        print("", file=sys.stderr)
+        print(
+            "dry-run only (no files written). Use --write or --staged to materialize registry + runbooks.",
+            file=sys.stderr,
+        )
+        in_gov = summary.get("runbooks_in_governance")
+        in_ws = summary.get("runbooks_in_workspaces")
+        if in_gov is not None:
+            print(f"runbooks in governance root: {in_gov}", file=sys.stderr)
+        if in_ws:
+            print(f"runbooks in agent workspaces: {in_ws}", file=sys.stderr)
+        would_link = summary.get("would_link_runbooks") or []
+        if would_link:
+            print(f"would add registry entries for runbooks: {len(would_link)}", file=sys.stderr)
+        would_import = summary.get("would_import_runbooks") or []
+        if would_import:
+            print(f"would import workspace runbooks: {len(would_import)}", file=sys.stderr)
+
+
 def cmd_discover(args: argparse.Namespace) -> int:
     config = resolve_config(args)
     result = discover(config)
 
-    if args.json:
-        print(json.dumps(result.to_dict(), indent=2))
-    else:
-        print_discovery_report(result)
-
     write = args.write or args.staged
     summary = materialize_from_discovery(result, config, write=write, staged=args.staged)
-    if write:
-        print("")
-        print(f"wrote registry: {summary.get('registry_path')}")
-        print(f"inventory: {summary.get('inventory_path')}")
-        print(f"created workflows: {len(summary.get('created_workflows', []))}")
-        print(f"updated workflows: {len(summary.get('updated_workflows', []))}")
-        if args.staged:
-            skipped = summary.get("skipped_protected_workflows") or []
-            print(f"skipped protected workflows: {len(skipped)}")
-        print(f"created runbooks: {len(summary.get('created_runbooks', []))}")
-        scaffolded = summary.get("scaffolded_files") or []
-        if scaffolded:
-            print(f"scaffolded missing files: {len(scaffolded)} (e.g. README.md)")
-        linked = summary.get("created_workflows_from_runbooks") or []
-        if linked:
-            print(f"linked registry from existing runbooks: {len(linked)}")
-        imported = summary.get("imported_runbooks") or []
-        if imported:
-            print(f"imported workspace runbooks: {len(imported)}")
-        skipped_import = summary.get("skipped_imported_runbooks") or []
-        if skipped_import:
-            print(f"skipped workspace imports (already exist): {len(skipped_import)}")
-    else:
-        print("")
-        print("dry-run only (no files written). Use --write or --staged to materialize registry + runbooks.")
-        in_gov = summary.get("runbooks_in_governance")
-        in_ws = summary.get("runbooks_in_workspaces")
-        if in_gov is not None:
-            print(f"runbooks in governance root: {in_gov}")
-        if in_ws:
-            print(f"runbooks in agent workspaces: {in_ws}")
-        would_link = summary.get("would_link_runbooks") or []
-        if would_link:
-            print(f"would add registry entries for runbooks: {len(would_link)}")
-        would_import = summary.get("would_import_runbooks") or []
-        if would_import:
-            print(f"would import workspace runbooks: {len(would_import)}")
 
-    if not write and not args.json:
+    if args.json:
+        payload = result.to_dict()
+        payload["materialization"] = summary
+        sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+        print_discovery_report(result, file=sys.stderr)
+        _print_discover_materialization(summary, write=write, staged=args.staged)
+        return 0
+
+    print_discovery_report(result)
+    _print_discover_materialization(summary, write=write, staged=args.staged)
+
+    if not write:
         out = config.governance_root / "workflows" / "discovered-inventory.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(result.to_dict(), indent=2) + "\n", encoding="utf-8")
@@ -244,6 +257,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Preview adoption without writing files",
+    )
+    adopt_parser.add_argument(
+        "--keep-target-config",
+        action="store_true",
+        help="Keep existing target governance.config.yaml values on conflict (default: source wins)",
     )
     adopt_parser.set_defaults(func=cmd_adopt)
 

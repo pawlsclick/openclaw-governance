@@ -6,6 +6,7 @@ import hashlib
 import json
 import subprocess
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,7 @@ class CronJob:
     schedule: str
     message_preview: str
     fingerprint: str = ""
+    instance_group_key: str = ""
 
 
 @dataclass
@@ -89,6 +91,36 @@ class DiscoveryResult:
     errors: list[dict[str, Any]] = field(default_factory=list)
     agent_statuses: list[AgentDiscoveryStatus] = field(default_factory=list)
 
+    def cron_instance_groups(self) -> list[dict[str, Any]]:
+        """Group cron jobs sharing agent + name + schedule (fan-out instances)."""
+        grouped: dict[str, list[CronJob]] = defaultdict(list)
+        for agent in self.agents:
+            for job in agent.cron_jobs:
+                key = job.instance_group_key or cron_instance_group_key(
+                    agent.agent_id, job.name, job.schedule
+                )
+                grouped[key].append(job)
+
+        result: list[dict[str, Any]] = []
+        for group_key in sorted(grouped):
+            jobs = grouped[group_key]
+            first = jobs[0]
+            fingerprints = sorted({job.fingerprint for job in jobs if job.fingerprint})
+            kind = "fan_out" if len(jobs) > 1 else "single"
+            result.append(
+                {
+                    "group_key": group_key,
+                    "agent_id": first.agent_id,
+                    "name": first.name,
+                    "schedule": first.schedule,
+                    "job_count": len(jobs),
+                    "fingerprints": fingerprints,
+                    "job_ids": [job.job_id for job in jobs],
+                    "kind": kind,
+                }
+            )
+        return result
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "generated_at": self.generated_at,
@@ -96,6 +128,7 @@ class DiscoveryResult:
             "openclaw_config_path": self.openclaw_config_path,
             "warnings": self.warnings,
             "errors": self.errors,
+            "cron_instance_groups": self.cron_instance_groups(),
             "agent_statuses": [
                 {
                     "agent_id": status.agent_id,
@@ -143,6 +176,7 @@ class DiscoveryResult:
                             "schedule": job.schedule,
                             "message_preview": job.message_preview,
                             "fingerprint": job.fingerprint,
+                            "instance_group_key": job.instance_group_key,
                         }
                         for job in agent.cron_jobs
                     ],
@@ -154,9 +188,53 @@ class DiscoveryResult:
         }
 
 
-def cron_fingerprint(agent_id: str, name: str, schedule: str, message_preview: str) -> str:
-    payload = f"{agent_id}\0{name}\0{schedule}\0{message_preview}"
-    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def normalize_cron_payload(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        return {str(k): normalize_cron_payload(v) for k, v in sorted(payload.items(), key=lambda item: str(item[0]))}
+    if isinstance(payload, list):
+        return [normalize_cron_payload(item) for item in payload]
+    return payload
+
+
+def normalize_schedule(sched: Any) -> Any:
+    if isinstance(sched, dict):
+        return json.loads(canonical_json(sched))
+    if sched is None:
+        return ""
+    return str(sched)
+
+
+def cron_instance_group_key(agent_id: str, name: str, schedule: str) -> str:
+    return f"{agent_id}\0{name}\0{schedule}"
+
+
+def cron_identity_dict(agent_id: str, job: dict[str, Any]) -> dict[str, Any]:
+    name = str(job.get("name") or job.get("id") or "unnamed")
+    enabled = bool(job.get("enabled", True))
+    schedule = normalize_schedule(job.get("schedule"))
+    payload_raw = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+    identity: dict[str, Any] = {
+        "agent_id": agent_id,
+        "name": name,
+        "schedule": schedule,
+        "enabled": enabled,
+        "payload": normalize_cron_payload(payload_raw),
+    }
+    session_target = job.get("sessionTarget")
+    if session_target is not None:
+        identity["sessionTarget"] = session_target
+    return identity
+
+
+def cron_fingerprint(agent_id: str, job: dict[str, Any]) -> str:
+    """Stable fingerprint from full normalized cron job identity (not message preview)."""
+    identity = cron_identity_dict(agent_id, job)
+    digest = hashlib.sha256(canonical_json(identity).encode("utf-8")).hexdigest()
+    return digest[:16]
 
 
 def scan_runbooks_on_disk(
@@ -332,22 +410,24 @@ def parse_cron_jobs(
         job_id = str(job.get("id", ""))
         name = str(job.get("name") or job_id or "unnamed")
         enabled = bool(job.get("enabled", True))
-        schedule = ""
         sched = job.get("schedule")
         if isinstance(sched, dict):
             schedule = json.dumps(sched, sort_keys=True)
         elif sched is not None:
             schedule = str(sched)
+        else:
+            schedule = ""
 
         payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
         message = payload.get("message", "")
         preview = str(message).replace("\n", " ")[:160]
-        fingerprint = cron_fingerprint(agent_id, name, schedule, preview)
+        fingerprint = cron_fingerprint(agent_id, job)
+        group_key = cron_instance_group_key(agent_id, name, schedule)
 
         if fingerprint in seen_fingerprints:
             prior_id, prior_name = seen_fingerprints[fingerprint]
             warn.append(
-                f"DUPLICATE CRON for agent `{agent_id}`: fingerprint `{fingerprint}` "
+                f"EXACT DUPLICATE CRON for agent `{agent_id}`: fingerprint `{fingerprint}` "
                 f"matches jobs `{prior_name}` ({prior_id}) and `{name}` ({job_id}); keeping first only"
             )
             continue
@@ -362,6 +442,7 @@ def parse_cron_jobs(
                 schedule=schedule,
                 message_preview=preview,
                 fingerprint=fingerprint,
+                instance_group_key=group_key,
             )
         )
     return parsed
@@ -483,36 +564,55 @@ def workflow_id_for_cron(agent_id: str, job_name: str) -> str:
     return f"{agent_id}.cron.{slugify(job_name)}"
 
 
-def print_discovery_report(result: DiscoveryResult) -> None:
-    print(f"Discovery at {result.generated_at}")
-    print(f"OpenClaw home: {result.openclaw_home}")
-    print(f"Agents: {len(result.agents)}")
+def print_discovery_report(result: DiscoveryResult, *, file: Any = None) -> None:
+    import sys as _sys
+
+    out = _sys.stdout if file is None else file
+    print(f"Discovery at {result.generated_at}", file=out)
+    print(f"OpenClaw home: {result.openclaw_home}", file=out)
+    print(f"Agents: {len(result.agents)}", file=out)
     cron_total = sum(len(agent.cron_jobs) for agent in result.agents)
-    print(f"Cron jobs: {cron_total}")
-    print(f"Runbooks in governance root: {len(result.runbooks)}")
-    print(f"Runbooks in agent workspaces: {len(result.workspace_runbooks)}")
+    print(f"Cron jobs: {cron_total}", file=out)
+    print(f"Runbooks in governance root: {len(result.runbooks)}", file=out)
+    print(f"Runbooks in agent workspaces: {len(result.workspace_runbooks)}", file=out)
     for status in result.agent_statuses:
         if status.ok:
-            print(f"OK agent {status.agent_id}: {status.cron_count} crons ({status.duration_ms}ms)")
+            print(f"OK agent {status.agent_id}: {status.cron_count} crons ({status.duration_ms}ms)", file=out)
         else:
-            print(f"ERROR agent {status.agent_id}: {status.error} ({status.duration_ms}ms)")
+            print(f"ERROR agent {status.agent_id}: {status.error} ({status.duration_ms}ms)", file=out)
     for warning in result.warnings:
-        print(f"WARN {warning}")
-    print("")
+        print(f"WARN {warning}", file=out)
+    groups = result.cron_instance_groups()
+    fan_out = [group for group in groups if group.get("kind") == "fan_out"]
+    if fan_out:
+        print(f"Cron instance groups (fan-out): {len(fan_out)}", file=out)
+        for group in fan_out:
+            print(
+                f"  {group['agent_id']}/{group['name']}: {group['job_count']} jobs, "
+                f"fingerprints={', '.join(group['fingerprints'])}",
+                file=out,
+            )
+    print("", file=out)
     for runbook in result.runbooks:
-        print(f"  [governance] {runbook.runbook} -> `{runbook.workflow_id}` ({runbook.title})")
+        print(f"  [governance] {runbook.runbook} -> `{runbook.workflow_id}` ({runbook.title})", file=out)
     for item in result.workspace_runbooks:
         print(
             f"  [workspace/{item.agent_id}] {item.workspace_relative} -> "
-            f"`{item.workflow_id}` => {item.target_runbook}"
+            f"`{item.workflow_id}` => {item.target_runbook}",
+            file=out,
         )
     if result.runbooks or result.workspace_runbooks:
-        print("")
+        print("", file=out)
     for agent in result.agents:
         print(
             f"- {agent.agent_id}: workspace={agent.workspace} "
-            f"crons={len(agent.cron_jobs)} scripts={len(agent.script_paths)}"
+            f"crons={len(agent.cron_jobs)} scripts={len(agent.script_paths)}",
+            file=out,
         )
         for job in agent.cron_jobs:
             state = "enabled" if job.enabled else "disabled"
-            print(f"    cron [{state}] {job.name} -> {workflow_id_for_cron(agent.agent_id, job.name)}")
+            print(
+                f"    cron [{state}] {job.name} ({job.job_id}) -> "
+                f"{workflow_id_for_cron(agent.agent_id, job.name)}",
+                file=out,
+            )
