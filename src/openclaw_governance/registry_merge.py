@@ -169,9 +169,7 @@ def merge_workflows(
                         if field in workflow:
                             current[field] = workflow[field]
                 if workflow.get("runtime_status"):
-                    if not staged:
-                        current["runtime_status"] = workflow["runtime_status"]
-                    elif status == "discovered" and current.get("runtime_status") in (None, ""):
+                    if not staged or status == "discovered":
                         current["runtime_status"] = workflow["runtime_status"]
             updated.append(workflow_id)
         else:
