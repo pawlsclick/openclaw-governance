@@ -95,3 +95,12 @@ def test_inject_file_dry_run_prefix(tmp_path: Path) -> None:
     stanza = render_stanza(config)
     action = inject_file(agents_md, stanza, write=False)
     assert action == "would_appended"
+
+
+def test_inject_file_dry_run_missing_file(tmp_path: Path) -> None:
+    agents_md = tmp_path / "missing" / "AGENTS.md"
+    config = _config(tmp_path)
+    stanza = render_stanza(config)
+    action = inject_file(agents_md, stanza, write=False)
+    assert action == "would_create"
+    assert not agents_md.is_file()

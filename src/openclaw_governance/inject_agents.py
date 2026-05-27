@@ -74,7 +74,7 @@ def inject_file(path: Path, stanza: str, *, write: bool) -> str:
         if write:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body, encoding="utf-8")
-        return "created"
+        return "created" if write else "would_create"
 
     text = path.read_text(encoding="utf-8")
     if has_stanza(text):

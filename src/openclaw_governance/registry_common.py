@@ -7,7 +7,9 @@ from typing import Any
 
 import yaml
 
-VALID_WORKFLOW_STATUSES = frozenset({"active", "required", "discovered", "implemented", "archived"})
+VALID_WORKFLOW_STATUSES = frozenset(
+    {"active", "required", "discovered", "deprecated", "implemented", "archived"}
+)
 VALID_RUNTIME_STATUSES = frozenset({"active", "manual", "disabled"})
 
 # Minimal generic prefix rules; extend via governance.config.yaml domain_prefix_rules.

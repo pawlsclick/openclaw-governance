@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from openclaw_governance.cli import parse_args, resolve_config
+from openclaw_governance.paths import resolve_governance_root
 
 
 def test_resolve_config_defaults_when_only_stray_registry_exists(
@@ -27,6 +28,23 @@ def test_resolve_config_defaults_when_only_stray_registry_exists(
 
     config = resolve_config(argparse.Namespace(root=None))
     assert config.governance_root == expected
+
+
+def test_resolve_config_openclaw_governance_root_env(tmp_path: Path, monkeypatch) -> None:
+    openclaw_home = tmp_path / "openclaw"
+    gov = tmp_path / "custom-gov"
+    gov.mkdir()
+    (gov / "governance.config.yaml").write_text(
+        f"openclaw_home: {openclaw_home}\ngovernance_root: {gov}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OPENCLAW_HOME", str(openclaw_home))
+    monkeypatch.setenv("OPENCLAW_GOVERNANCE_ROOT", str(gov))
+    monkeypatch.chdir(tmp_path)
+
+    config = resolve_config(argparse.Namespace(root=None))
+    assert config.governance_root == gov.resolve()
+    assert resolve_governance_root() == gov.resolve()
 
 
 def test_discover_accepts_root_after_subcommand(tmp_path: Path) -> None:
