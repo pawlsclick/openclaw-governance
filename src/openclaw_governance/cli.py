@@ -65,48 +65,49 @@ def cmd_config_validate(args: argparse.Namespace) -> int:
 
 
 def _print_discover_materialization(
-    summary: dict[str, Any], *, write: bool, staged: bool, file=sys.stdout
+    summary: dict[str, Any], *, write: bool, staged: bool, file: Any = None
 ) -> None:
+    out = sys.stdout if file is None else file
     if write:
-        print("", file=file)
-        print(f"wrote registry: {summary.get('registry_path')}", file=file)
-        print(f"inventory: {summary.get('inventory_path')}", file=file)
-        print(f"created workflows: {len(summary.get('created_workflows', []))}", file=file)
-        print(f"updated workflows: {len(summary.get('updated_workflows', []))}", file=file)
+        print("", file=out)
+        print(f"wrote registry: {summary.get('registry_path')}", file=out)
+        print(f"inventory: {summary.get('inventory_path')}", file=out)
+        print(f"created workflows: {len(summary.get('created_workflows', []))}", file=out)
+        print(f"updated workflows: {len(summary.get('updated_workflows', []))}", file=out)
         if staged:
             skipped = summary.get("skipped_protected_workflows") or []
-            print(f"skipped protected workflows: {len(skipped)}", file=file)
-        print(f"created runbooks: {len(summary.get('created_runbooks', []))}", file=file)
+            print(f"skipped protected workflows: {len(skipped)}", file=out)
+        print(f"created runbooks: {len(summary.get('created_runbooks', []))}", file=out)
         scaffolded = summary.get("scaffolded_files") or []
         if scaffolded:
-            print(f"scaffolded missing files: {len(scaffolded)} (e.g. README.md)", file=file)
+            print(f"scaffolded missing files: {len(scaffolded)} (e.g. README.md)", file=out)
         linked = summary.get("created_workflows_from_runbooks") or []
         if linked:
-            print(f"linked registry from existing runbooks: {len(linked)}", file=file)
+            print(f"linked registry from existing runbooks: {len(linked)}", file=out)
         imported = summary.get("imported_runbooks") or []
         if imported:
-            print(f"imported workspace runbooks: {len(imported)}", file=file)
+            print(f"imported workspace runbooks: {len(imported)}", file=out)
         skipped_import = summary.get("skipped_imported_runbooks") or []
         if skipped_import:
-            print(f"skipped workspace imports (already exist): {len(skipped_import)}", file=file)
+            print(f"skipped workspace imports (already exist): {len(skipped_import)}", file=out)
     else:
-        print("", file=file)
+        print("", file=out)
         print(
             "dry-run only (no files written). Use --write or --staged to materialize registry + runbooks.",
-            file=file,
+            file=out,
         )
         in_gov = summary.get("runbooks_in_governance")
         in_ws = summary.get("runbooks_in_workspaces")
         if in_gov is not None:
-            print(f"runbooks in governance root: {in_gov}", file=file)
+            print(f"runbooks in governance root: {in_gov}", file=out)
         if in_ws:
-            print(f"runbooks in agent workspaces: {in_ws}", file=file)
+            print(f"runbooks in agent workspaces: {in_ws}", file=out)
         would_link = summary.get("would_link_runbooks") or []
         if would_link:
-            print(f"would add registry entries for runbooks: {len(would_link)}", file=file)
+            print(f"would add registry entries for runbooks: {len(would_link)}", file=out)
         would_import = summary.get("would_import_runbooks") or []
         if would_import:
-            print(f"would import workspace runbooks: {len(would_import)}", file=file)
+            print(f"would import workspace runbooks: {len(would_import)}", file=out)
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
