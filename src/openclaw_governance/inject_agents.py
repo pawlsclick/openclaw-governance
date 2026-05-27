@@ -55,36 +55,35 @@ def remove_stanza_from_text(text: str) -> tuple[str, bool]:
         return text, False
     start = text.index(BEGIN)
     end = text.index(END) + len(END)
-    prefix = text[:start].rstrip()
-    suffix = text[end:].lstrip("\n")
-    if prefix and suffix:
-        updated = prefix + "\n\n" + suffix
-    elif prefix:
-        updated = prefix + "\n"
-    elif suffix:
-        updated = suffix + "\n" if not suffix.endswith("\n") else suffix
-    else:
-        updated = ""
+    # Preserve bytes outside markers exactly (including trailing whitespace on lines).
+    updated = text[:start] + text[end:]
     return updated, True
 
 
 def inject_file(path: Path, stanza: str, *, write: bool) -> str:
     if not path.is_file():
-        body = f"# AGENTS.md\n\n{stanza}\n"
+        body = f"# AGENTS.md\n\n{stanza}"
+        if not body.endswith("\n"):
+            body += "\n"
         if write:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body, encoding="utf-8")
         return "created" if write else "would_create"
 
-    text = path.read_text(encoding="utf-8")
+    original = path.read_bytes()
+    text = original.decode("utf-8")
     if has_stanza(text):
         start = text.index(BEGIN)
         end = text.index(END) + len(END)
-        updated = text[:start] + stanza.rstrip() + text[end:]
+        stanza_body = stanza
+        if not stanza_body.endswith("\n") and end < len(text) and text[end : end + 1] not in ("", "\n"):
+            pass
+        updated = text[:start] + stanza_body + text[end:]
         action = "updated" if updated != text else "unchanged"
     else:
         separator = "\n\n" if text.endswith("\n") else "\n\n"
-        updated = text.rstrip() + separator + stanza + "\n"
+        suffix = stanza if stanza.endswith("\n") else stanza + "\n"
+        updated = text + separator + suffix
         action = "appended"
 
     if write and updated != text:
