@@ -60,6 +60,8 @@ CRON_DISCOVERY_REFRESH_FIELDS = (
 def merge_agents(
     existing: list[dict[str, Any]],
     proposed: list[dict[str, Any]],
+    *,
+    refresh_discovery_fields: bool = False,
 ) -> list[dict[str, Any]]:
     """Merge agent entries; preserve hand-authored fields from existing rows."""
     by_id: dict[str, dict[str, Any]] = {}
@@ -67,6 +69,7 @@ def merge_agents(
         if isinstance(item, dict) and item.get("id"):
             by_id[str(item["id"])] = dict(item)
 
+    discovery_fields = {"workspace", "name", "role"}
     for item in proposed:
         if not isinstance(item, dict) or not item.get("id"):
             continue
@@ -74,8 +77,9 @@ def merge_agents(
         if agent_id in by_id:
             current = by_id[agent_id]
             for key, value in item.items():
-                if key in {"workspace", "name", "role"}:
-                    current[key] = value
+                if key in discovery_fields:
+                    if refresh_discovery_fields or key not in current or current[key] in (None, ""):
+                        current[key] = value
                 elif key not in current:
                     current[key] = value
         else:
@@ -145,8 +149,7 @@ def merge_workflows(
             current = by_id[workflow_id]
             status = str(current.get("status", "discovered"))
             if staged and status in PROTECTED_WORKFLOW_STATUSES:
-                if workflow.get("runtime_status"):
-                    current["runtime_status"] = workflow["runtime_status"]
+                _union_cron_job_ids(current, workflow)
                 skipped_protected.append(workflow_id)
                 continue
 
@@ -160,15 +163,16 @@ def merge_workflows(
                     current_discovered = {}
                     current["discovered_from"] = current_discovered
                 current_discovered["cron_instances"] = discovered["cron_instances"]
-            if (
-                workflow.get("orchestration") == "openclaw_cron"
-                and workflow.get("runtime_status")
-            ):
+            if workflow.get("orchestration") == "openclaw_cron":
                 if current.get("orchestration") != "openclaw_cron":
                     for field in CRON_DISCOVERY_REFRESH_FIELDS:
                         if field in workflow:
                             current[field] = workflow[field]
-                current["runtime_status"] = workflow["runtime_status"]
+                if workflow.get("runtime_status"):
+                    if not staged:
+                        current["runtime_status"] = workflow["runtime_status"]
+                    elif status == "discovered" and current.get("runtime_status") in (None, ""):
+                        current["runtime_status"] = workflow["runtime_status"]
             updated.append(workflow_id)
         else:
             if staged:

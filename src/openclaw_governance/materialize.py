@@ -20,6 +20,11 @@ from openclaw_governance.discover import (
 )
 from openclaw_governance.governance_scaffold import ensure_governance_scaffold
 from openclaw_governance.runbook_import import render_imported_runbook
+from openclaw_governance.candidates import (
+    build_discovery_candidates,
+    filter_proposed_by_allowlist,
+)
+from openclaw_governance.registry_diff import registry_semantic_diff
 from openclaw_governance.registry_merge import merge_agents, merge_workflows
 from openclaw_governance.registry_common import (
     UniqueKeyLoader,
@@ -28,6 +33,7 @@ from openclaw_governance.registry_common import (
     ensure_raci_domains,
     infer_workflow_raci_domain,
     load_registry,
+    should_skip_runbook_proposal,
 )
 
 UniqueKeyLoader.add_constructor(
@@ -280,36 +286,25 @@ def apply_inferred_raci_domain(
         workflow["raci_domain"] = domain
 
 
-def materialize_from_discovery(
+def build_proposed_workflows(
     result: DiscoveryResult,
     config: GovernanceConfig,
+    registry: dict[str, Any],
     *,
-    write: bool = False,
-    staged: bool = False,
-) -> dict[str, Any]:
-    """Build or update registry + runbooks. Returns summary dict."""
+    write_runbooks_import: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any], list[DiscoveredRunbook]]:
+    """Build proposed workflow entries and runbook side-effect summary."""
     workspace_by_workflow = {item.workflow_id: item for item in result.workspace_runbooks}
-    summary: dict[str, Any] = {
-        "write": write,
-        "staged": staged,
-        "created_workflows": [],
-        "updated_workflows": [],
-        "skipped_protected_workflows": [],
-        "created_workflows_from_runbooks": [],
-        "created_runbooks": [],
-        "skipped_runbooks": [],
+    side_summary: dict[str, Any] = {
         "imported_runbooks": [],
         "skipped_imported_runbooks": [],
-        "runbooks_in_governance": len(result.runbooks),
-        "runbooks_in_workspaces": len(result.workspace_runbooks),
     }
-
     known_agent_ids = {agent.agent_id for agent in result.agents}
     governance_runbooks = list(result.runbooks)
-    if write and result.workspace_runbooks:
+
+    if write_runbooks_import and result.workspace_runbooks:
         import_summary = import_workspace_runbooks(result.workspace_runbooks, config)
-        summary["imported_runbooks"] = import_summary["imported_runbooks"]
-        summary["skipped_imported_runbooks"] = import_summary["skipped_imported_runbooks"]
+        side_summary.update(import_summary)
         imported_runbooks = set(import_summary["imported_runbooks"])
         workspace_by_workflow = {
             item.workflow_id: item
@@ -348,10 +343,13 @@ def materialize_from_discovery(
             continue
         agent_id = jobs[0].agent_id
         entry = workflow_entry_from_cron_group(agent_id, jobs, config)
-        proposed_by_id[str(entry["id"])] = entry
+        workflow_id = str(entry["id"])
+        proposed_by_id[workflow_id] = entry
 
     for runbook in governance_runbooks:
         if runbook.workflow_id in proposed_by_id:
+            continue
+        if should_skip_runbook_proposal(runbook.workflow_id, registry, config):
             continue
         workspace_source = workspace_by_workflow.get(runbook.workflow_id)
         proposed_by_id[runbook.workflow_id] = workflow_entry_from_runbook(
@@ -359,13 +357,82 @@ def materialize_from_discovery(
             workspace_source=workspace_source,
         )
 
-    proposed_workflows = list(proposed_by_id.values())
+    return list(proposed_by_id.values()), side_summary, governance_runbooks
+
+
+def write_discovery_artifacts(
+    result: DiscoveryResult,
+    config: GovernanceConfig,
+    *,
+    candidates: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Write discovered-inventory.json and optional discovery-candidates.json."""
+    paths: dict[str, str] = {}
+    workflows_dir = config.governance_root / "workflows"
+    workflows_dir.mkdir(parents=True, exist_ok=True)
+
+    known_agent_ids = {agent.agent_id for agent in result.agents}
+    inventory_result = DiscoveryResult(
+        generated_at=result.generated_at,
+        openclaw_home=result.openclaw_home,
+        openclaw_config_path=result.openclaw_config_path,
+        agents=result.agents,
+        runbooks=scan_runbooks_on_disk(config, known_agent_ids) if config.runbooks_dir.is_dir() else result.runbooks,
+        workspace_runbooks=result.workspace_runbooks,
+        warnings=result.warnings,
+        errors=result.errors,
+        agent_statuses=result.agent_statuses,
+    )
+    inventory_path = workflows_dir / "discovered-inventory.json"
+    inventory_path.write_text(
+        json.dumps(inventory_result.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    paths["inventory_path"] = str(inventory_path)
+
+    if candidates is not None:
+        candidates_path = workflows_dir / "discovery-candidates.json"
+        candidates_path.write_text(json.dumps(candidates, indent=2) + "\n", encoding="utf-8")
+        paths["candidates_path"] = str(candidates_path)
+    return paths
+
+
+def materialize_from_discovery(
+    result: DiscoveryResult,
+    config: GovernanceConfig,
+    *,
+    write: bool = False,
+    staged: bool = False,
+    promote: bool = False,
+    allowlist: set[str] | None = None,
+) -> dict[str, Any]:
+    """Build or update registry + runbooks. Returns summary dict."""
+    write_registry = write or promote
+    staged_merge = promote or (write and staged)
+    report_candidates = staged
+
+    workspace_by_workflow = {item.workflow_id: item for item in result.workspace_runbooks}
+    summary: dict[str, Any] = {
+        "write": write_registry,
+        "staged": staged,
+        "promote": promote,
+        "created_workflows": [],
+        "updated_workflows": [],
+        "skipped_protected_workflows": [],
+        "created_workflows_from_runbooks": [],
+        "created_runbooks": [],
+        "skipped_runbooks": [],
+        "imported_runbooks": [],
+        "skipped_imported_runbooks": [],
+        "runbooks_in_governance": len(result.runbooks),
+        "runbooks_in_workspaces": len(result.workspace_runbooks),
+    }
 
     registry_path = config.registry_path
     if registry_path.is_file():
-        registry = load_registry(registry_path)
+        registry_before = load_registry(registry_path)
     else:
-        registry = {
+        registry_before = {
             "generated_at": result.generated_at,
             "version": 0.1,
             "source_note": "Initialized by openclaw-gov discover",
@@ -373,6 +440,29 @@ def materialize_from_discovery(
             "raci_domains": {},
             "workflows": [],
         }
+
+    registry = json.loads(json.dumps(registry_before))
+    proposed_workflows, import_side, governance_runbooks = build_proposed_workflows(
+        result,
+        config,
+        registry,
+        write_runbooks_import=write_registry,
+    )
+    summary["imported_runbooks"] = import_side.get("imported_runbooks", [])
+    summary["skipped_imported_runbooks"] = import_side.get("skipped_imported_runbooks", [])
+
+    if allowlist is not None:
+        proposed_workflows = filter_proposed_by_allowlist(proposed_workflows, allowlist)
+
+    candidates_report = None
+    if report_candidates:
+        candidates_report = build_discovery_candidates(
+            result,
+            registry,
+            proposed_workflows,
+            config,
+        )
+        summary["candidates"] = candidates_report
 
     registry["generated_at"] = result.generated_at
     proposed_agents = agents_registry_entries(result, config)
@@ -382,7 +472,12 @@ def materialize_from_discovery(
     registry["agents"] = merge_agents(existing_agents, proposed_agents)
     agent_id_list = [entry["id"] for entry in registry["agents"]]
     accountable = config.accountable_humans[0] if config.accountable_humans else "Operator"
-    ensure_raci_domains(registry, agent_id_list, accountable=accountable)
+    ensure_raci_domains(
+        registry,
+        agent_id_list,
+        accountable=accountable,
+        config_excluded=config.raci_broadcast_excluded,
+    )
 
     existing_workflows = registry.get("workflows")
     if not isinstance(existing_workflows, list):
@@ -391,7 +486,7 @@ def materialize_from_discovery(
     merged, created, updated, skipped_protected = merge_workflows(
         existing_workflows,
         proposed_workflows,
-        staged=staged,
+        staged=staged_merge,
     )
     prefix_rules = effective_domain_prefix_rules(tuple(config.domain_prefix_rules), registry)
     for workflow in merged:
@@ -406,7 +501,17 @@ def materialize_from_discovery(
         workflow_id for workflow_id in created if workflow_id in runbook_workflow_ids
     ]
 
-    if not write:
+    artifact_paths = write_discovery_artifacts(
+        result,
+        config,
+        candidates=candidates_report,
+    )
+    summary.update(artifact_paths)
+
+    diff = registry_semantic_diff(registry_before, registry)
+    summary["registry_diff"] = diff
+
+    if not write_registry:
         summary["would_write_registry"] = str(registry_path)
         summary["proposed_workflow_count"] = len(proposed_workflows)
         existing_ids = {str(item.get("id")) for item in existing_workflows if isinstance(item, dict)}
@@ -418,6 +523,16 @@ def materialize_from_discovery(
             for item in result.workspace_runbooks
             if not (config.governance_root / item.target_runbook).is_file()
         ]
+        if staged and not promote:
+            summary["promote_hint"] = (
+                "v0.5.1: discover --staged writes inventory + discovery-candidates.json only. "
+                "Use discover --promote to apply registry changes."
+            )
+        return summary
+
+    if not diff["changed"]:
+        summary["registry_unchanged"] = True
+        summary["registry_path"] = str(registry_path)
         return summary
 
     scaffolded = ensure_governance_scaffold(config)
@@ -461,23 +576,5 @@ def materialize_from_discovery(
     with registry_path.open("w", encoding="utf-8") as handle:
         yaml.dump(registry, handle, sort_keys=False, allow_unicode=True)
 
-    inventory_path = config.governance_root / "workflows" / "discovered-inventory.json"
-    inventory_path.parent.mkdir(parents=True, exist_ok=True)
-    inventory_result = DiscoveryResult(
-        generated_at=result.generated_at,
-        openclaw_home=result.openclaw_home,
-        openclaw_config_path=result.openclaw_config_path,
-        agents=result.agents,
-        runbooks=scan_runbooks_on_disk(config, known_agent_ids),
-        workspace_runbooks=result.workspace_runbooks,
-        warnings=result.warnings,
-        errors=result.errors,
-        agent_statuses=result.agent_statuses,
-    )
-    inventory_path.write_text(
-        json.dumps(inventory_result.to_dict(), indent=2) + "\n",
-        encoding="utf-8",
-    )
-    summary["inventory_path"] = str(inventory_path)
     summary["registry_path"] = str(registry_path)
     return summary

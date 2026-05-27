@@ -105,7 +105,7 @@ def test_merge_workflows_staged_skips_active() -> None:
     assert skipped == ["main.cron.daily"]
     row = merged[0]
     assert row["title"] == "Hand-authored title"
-    assert row["runtime_status"] == "disabled"
+    assert row["runtime_status"] == "active"
 
 
 def test_merge_agents_preserves_notes() -> None:
