@@ -158,7 +158,10 @@ def run_adopt(
         source_workflows = source_registry.get("workflows")
         if not isinstance(source_workflows, list):
             source_workflows = []
-        report["would_copy_runbooks"] = len(list((source / "workflows" / "runbooks").glob("*.md")))
+        source_runbooks = source / "workflows" / "runbooks"
+        report["would_copy_runbooks"] = (
+            len(list(source_runbooks.glob("*.md"))) if source_runbooks.is_dir() else 0
+        )
         report["source_workflow_count"] = len(source_workflows)
         report["dry_run"] = True
 

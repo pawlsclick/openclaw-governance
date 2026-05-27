@@ -113,7 +113,6 @@ def cmd_discover(args: argparse.Namespace) -> int:
             print(f"would import workspace runbooks: {len(would_import)}")
 
     if not write and not args.json:
-        config = resolve_config(args)
         out = config.governance_root / "workflows" / "discovered-inventory.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(result.to_dict(), indent=2) + "\n", encoding="utf-8")
