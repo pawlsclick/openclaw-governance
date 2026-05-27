@@ -135,10 +135,11 @@ def merge_workflows(
 
     for workflow in proposed:
         workflow_id = str(workflow.get("id"))
-        fingerprint = workflow.get("cron_fingerprint")
-        if isinstance(fingerprint, str) and fingerprint in by_fingerprint:
-            workflow_id = by_fingerprint[fingerprint]
-            workflow = {**workflow, "id": workflow_id}
+        for fp in _workflow_fingerprints(workflow):
+            if fp in by_fingerprint:
+                workflow_id = by_fingerprint[fp]
+                workflow = {**workflow, "id": workflow_id}
+                break
 
         if workflow_id in by_id:
             current = by_id[workflow_id]
