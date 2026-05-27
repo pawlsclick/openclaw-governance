@@ -139,8 +139,15 @@ def _adopt_config_file(
 
     merged["governance_root"] = str(target_root)
     merged["openclaw_home"] = str(config.openclaw_home)
-    diff["path_rewrites"]["governance_root"] = str(target_root)
-    diff["path_rewrites"]["openclaw_home"] = str(config.openclaw_home)
+    for key, value in (
+        ("governance_root", str(target_root)),
+        ("openclaw_home", str(config.openclaw_home)),
+    ):
+        existing = diff["path_rewrites"].get(key)
+        if isinstance(existing, dict):
+            existing["target_after"] = value
+        else:
+            diff["path_rewrites"][key] = value
 
     with target_path.open("w", encoding="utf-8") as handle:
         yaml.dump(merged, handle, sort_keys=False, allow_unicode=True)
