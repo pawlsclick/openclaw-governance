@@ -1,12 +1,52 @@
 # Migrating an existing governance root
 
-Use this guide when you already have a governance repository (for example `openclaw-workspace-governance`) with hand-authored `registry.yaml` entries, runbooks, and RACI domains, and want to adopt **openclaw-gov** without losing promoted workflows.
+Use this guide when you already have a governance repository with hand-authored `registry.yaml` entries, runbooks, and RACI domains, and want to adopt **openclaw-gov** without losing promoted workflows.
 
 ## Prerequisites
 
 - OpenClaw installed with `openclaw.json` listing your agents
-- `openclaw-gov` v0.4.0+ installed ([README](../README.md))
+- `openclaw-gov` v0.5.0+ installed ([README](../README.md))
 - A backup or git commit of your governance repo before merging
+
+## Recommended migration flow
+
+```bash
+# 1. Initialize target governance root (default: ~/.openclaw/governance)
+openclaw-gov init --root ~/.openclaw/governance
+
+# 2. Adopt from your existing governance repo (source is authoritative)
+openclaw-gov adopt --from ~/Projects/my-openclaw-governance --root ~/.openclaw/governance
+
+# 3. Validate configuration
+openclaw-gov doctor --validate-config --root ~/.openclaw/governance
+
+# 4. Registry and runbook checks
+openclaw-gov check --root ~/.openclaw/governance
+
+# 5. Discover inventory (machine-readable JSON on stdout)
+openclaw-gov discover --json --root ~/.openclaw/governance | jq .
+
+# 6. Review inventory (human report is on stderr; cron_instance_groups shows fan-out)
+
+# 7. Stage discovered workflows without overwriting promoted rows
+openclaw-gov discover --staged --root ~/.openclaw/governance
+
+# 8. Regenerate README sections (packaged generator — use in CI)
+openclaw-gov regen --write --root ~/.openclaw/governance
+
+# 9. Ship governance changes
+openclaw-gov ship start --root ~/.openclaw/governance
+# ... edit registry/runbooks ...
+openclaw-gov ship commit --root ~/.openclaw/governance
+```
+
+**CI gate for downstream governance repos:**
+
+```bash
+openclaw-gov regen --check && openclaw-gov check
+```
+
+Do not rely on vendored generator scripts; the packaged `openclaw-gov regen` output is canonical.
 
 ## Set the governance root
 
@@ -29,29 +69,34 @@ Use when you want a fresh `~/.openclaw/governance` (or another directory) merged
 
 ```bash
 # Preview
-openclaw-gov adopt --from ~/Projects/openclaw-workspace-governance --dry-run
+openclaw-gov adopt --from ~/Projects/my-openclaw-governance --dry-run
 
 # Execute (backs up target registry, writes adoption report)
-openclaw-gov adopt --from ~/Projects/openclaw-workspace-governance --root ~/.openclaw/governance
+openclaw-gov adopt --from ~/Projects/my-openclaw-governance --root ~/.openclaw/governance
 ```
 
-`adopt`:
+By default, **adopt treats the source as authoritative**:
 
-- Copies `workflows/runbooks/*.md` only when the target file does not exist
-- Merges `registry.yaml` with **staged** rules: `active`, `required`, and other promoted statuses are not overwritten
-- Adds missing `raci_domains` from the source without removing target domains
-- Writes `workflows/adoption-report-*.json`
+- `governance.config.yaml` values come from the source (only `governance_root` and `openclaw_home` are rewritten for the target)
+- Top-level `registry.yaml` metadata sections are preserved
+- `workflows/CHANGELOG.md`, `workflows/README.md`, and `docs/**` are copied when missing
+- Runbooks under `workflows/runbooks/` are copied when missing
+- Promoted workflows (`active`, `required`, etc.) in the target are not overwritten
+
+Use `--keep-target-config` if you prefer the older behavior (target config wins on conflict; source fills gaps only).
+
+The adoption report (`workflows/adoption-report-*.json`) includes a semantic diff: config keys overwritten/kept, registry sections copied/merged, docs copied/skipped.
 
 Alias:
 
 ```bash
-openclaw-gov init --adopt ~/Projects/openclaw-workspace-governance --root ~/.openclaw/governance
+openclaw-gov init --adopt ~/Projects/my-openclaw-governance --root ~/.openclaw/governance
 ```
 
 ## Path B: Use your existing repo as the governance root
 
 ```bash
-cd ~/Projects/openclaw-workspace-governance
+cd ~/Projects/my-openclaw-governance
 export OPENCLAW_GOVERNANCE_ROOT=$PWD
 
 openclaw-gov doctor --validate-config
@@ -90,15 +135,18 @@ Catches:
 - Typos in `governance.config.yaml` keys
 - `governance_root` in config pointing elsewhere than the resolved root
 
-## Duplicate crons
+## Cron instance groups (fan-out)
 
-Discover dedupes crons by **fingerprint** (agent + name + schedule + payload preview). If you see:
+Discover fingerprints each cron job from the **full normalized payload** (not a message preview). Jobs that share agent, name, and schedule but differ in payload are **related instances** (fan-out), not duplicates.
 
-```text
-WARN DUPLICATE CRON for agent `main`: fingerprint `abc123...` matches jobs ...
+- **Exact duplicate** (same fingerprint): warning `EXACT DUPLICATE CRON`; only the first job is kept in discovery output.
+- **Fan-out** (same name/schedule, different payload): all jobs are kept; materialization creates **one workflow** with multiple `cron_job_ids`.
+
+JSON output includes `cron_instance_groups` for automation. Example:
+
+```bash
+openclaw-gov discover --json | jq '.cron_instance_groups[] | select(.kind == "fan_out")'
 ```
-
-Only one registry workflow is created per fingerprint. Remove duplicate cron jobs in OpenClaw or rename/reschedule so fingerprints differ.
 
 ## Slow or failing agents
 
@@ -119,7 +167,10 @@ After verifying triggers and runbooks, promote entries in `workflows/registry.ya
 
 | Symptom | Action |
 |---------|--------|
-| 21 duplicate workflow rows | Re-run `discover --staged`; check DUPLICATE CRON warnings |
-| discover hangs | Lower agent count test with one agent; increase timeout; check `openclaw cron list --agent ID --json` |
+| `jq` parse error on discover | Upgrade to v0.5.0+; ensure only JSON is piped from stdout (human report is on stderr) |
+| Missing fan-out cron jobs | Check `cron_instance_groups` in JSON; distinct payloads should appear under one group |
+| Adopt kept generic config | Re-run without `--keep-target-config`; inspect `adoption-report-*.json` |
+| regen --check fails after regen --write | Run from governance root; ensure README has governance markers from `init` |
+| discover hangs | Increase `discovery.cron_timeout_seconds`; test `openclaw cron list --agent ID --json` |
 | config ignored | Set `OPENCLAW_GOVERNANCE_ROOT` or pass `--root` |
-| inject dry-run says `created` | Upgrade to v0.4.0+ (`would_create` on dry-run) |
+| inject dry-run modified files | Upgrade to v0.5.0+ (dry-run must not write) |

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -186,27 +187,45 @@ def import_workspace_runbooks(
     return summary
 
 
-def workflow_entry_from_cron(
+def workflow_entry_from_cron_group(
     agent_id: str,
-    job: Any,
+    jobs: list[Any],
     config: GovernanceConfig,
 ) -> dict[str, Any]:
-    workflow_id = workflow_id_for_cron(agent_id, job.name)
+    """One registry workflow per (agent, name, schedule) with all matching cron_job_ids."""
+    if not jobs:
+        raise ValueError("workflow_entry_from_cron_group requires at least one cron job")
+    primary = jobs[0]
+    workflow_id = workflow_id_for_cron(agent_id, primary.name)
     runbook = runbook_path_for(workflow_id)
-    runtime_status = "active" if job.enabled else "disabled"
+    any_enabled = any(job.enabled for job in jobs)
+    runtime_status = "active" if any_enabled else "disabled"
+    job_ids = sorted({job.job_id for job in jobs if job.job_id})
+    fingerprints = sorted({job.fingerprint for job in jobs if job.fingerprint})
+    cron_instances = [
+        {"job_id": job.job_id, "fingerprint": job.fingerprint}
+        for job in jobs
+        if job.fingerprint or job.job_id
+    ]
+    purpose = f"Discovered OpenClaw cron job `{primary.name}` for agent `{agent_id}`."
+    if len(jobs) > 1:
+        purpose = (
+            f"Discovered {len(jobs)} related cron instances for `{primary.name}` "
+            f"(agent `{agent_id}`); same name and schedule, distinct payloads."
+        )
     return {
         "id": workflow_id,
         "agent": agent_id,
-        "title": job.name.replace("_", " ").replace("-", " ").title(),
+        "title": primary.name.replace("_", " ").replace("-", " ").title(),
         "status": "discovered",
-        "purpose": f"Discovered OpenClaw cron job `{job.name}` for agent `{agent_id}`.",
-        "trigger": f"cron/openclaw_cron ({job.schedule or 'schedule unknown'})",
+        "purpose": purpose,
+        "trigger": f"cron/openclaw_cron ({primary.schedule or 'schedule unknown'})",
         "orchestration": "openclaw_cron",
         "inputs": [],
         "outputs": [],
         "tools_or_scripts": [],
         "source_docs": [],
-        "cron_job_ids": [job.job_id] if job.job_id else [],
+        "cron_job_ids": job_ids,
         "risk_level": "low",
         "approval_required": False,
         "success_criteria": ["Cron job runs on schedule without error (verify and refine)."],
@@ -215,12 +234,14 @@ def workflow_entry_from_cron(
         "runbook": runbook,
         "runtime_status": runtime_status,
         "code_management": default_code_management(),
-        "cron_fingerprint": job.fingerprint,
+        "cron_fingerprint": fingerprints[0] if len(fingerprints) == 1 else fingerprints,
         "discovered_from": {
             "source": "openclaw-gov discover",
-            "cron_name": job.name,
-            "message_preview": job.message_preview,
-            "cron_fingerprint": job.fingerprint,
+            "cron_name": primary.name,
+            "message_preview": primary.message_preview,
+            "cron_fingerprint": fingerprints[0] if len(fingerprints) == 1 else fingerprints,
+            "cron_instances": cron_instances,
+            "instance_group_key": primary.instance_group_key,
         },
     }
 
@@ -316,10 +337,18 @@ def materialize_from_discovery(
             existing_runbook_workflow_ids.add(item.workflow_id)
 
     proposed_by_id: dict[str, dict[str, Any]] = {}
+    cron_groups: dict[str, list[Any]] = defaultdict(list)
     for agent in result.agents:
         for job in agent.cron_jobs:
-            entry = workflow_entry_from_cron(agent.agent_id, job, config)
-            proposed_by_id[str(entry["id"])] = entry
+            group_key = job.instance_group_key or f"{agent.agent_id}\0{job.name}\0{job.schedule}"
+            cron_groups[group_key].append(job)
+
+    for jobs in cron_groups.values():
+        if not jobs:
+            continue
+        agent_id = jobs[0].agent_id
+        entry = workflow_entry_from_cron_group(agent_id, jobs, config)
+        proposed_by_id[str(entry["id"])] = entry
 
     for runbook in governance_runbooks:
         if runbook.workflow_id in proposed_by_id:
@@ -407,16 +436,14 @@ def materialize_from_discovery(
             continue
 
         agent_id = str(workflow.get("agent", ""))
-        job = next(
-            (
-                cron
-                for agent in result.agents
-                if agent.agent_id == agent_id
-                for cron in agent.cron_jobs
-                if workflow_id_for_cron(agent_id, cron.name) == workflow_id
-            ),
-            None,
-        )
+        group_jobs = [
+            cron
+            for agent in result.agents
+            if agent.agent_id == agent_id
+            for cron in agent.cron_jobs
+            if workflow_id_for_cron(agent_id, cron.name) == workflow_id
+        ]
+        job = group_jobs[0] if group_jobs else None
         runbook_file.write_text(
             render_runbook_stub(
                 workflow_id=workflow_id,

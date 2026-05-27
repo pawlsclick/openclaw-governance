@@ -17,6 +17,13 @@ from openclaw_governance.registry_common import load_registry
 from openclaw_governance.registry_merge import merge_registry_for_adopt
 
 
+PATH_REWRITE_KEYS = frozenset({"governance_root", "openclaw_home"})
+SUPPORT_DOC_PATHS = (
+    "workflows/CHANGELOG.md",
+    "workflows/README.md",
+)
+
+
 def _copy_runbooks_if_missing(source_root: Path, target_root: Path) -> dict[str, list[str]]:
     summary: dict[str, list[str]] = {"copied": [], "skipped": []}
     source_runbooks = source_root / "workflows" / "runbooks"
@@ -39,17 +46,62 @@ def _copy_runbooks_if_missing(source_root: Path, target_root: Path) -> dict[str,
     return summary
 
 
-def _merge_config_file(source_root: Path, target_root: Path) -> list[str]:
-    warnings: list[str] = []
+def _copy_support_docs(source_root: Path, target_root: Path) -> dict[str, list[str]]:
+    summary: dict[str, list[str]] = {"copied": [], "skipped": []}
+    for rel in SUPPORT_DOC_PATHS:
+        source_path = source_root / rel
+        if not source_path.is_file():
+            continue
+        dest = target_root / rel
+        if dest.is_file():
+            summary["skipped"].append(rel)
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, dest)
+        summary["copied"].append(rel)
+
+    source_docs = source_root / "docs"
+    if source_docs.is_dir():
+        target_docs = target_root / "docs"
+        target_docs.mkdir(parents=True, exist_ok=True)
+        for path in sorted(source_docs.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(source_root).as_posix()
+            dest = target_root / rel
+            if dest.is_file():
+                summary["skipped"].append(rel)
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, dest)
+            summary["copied"].append(rel)
+    return summary
+
+
+def _adopt_config_file(
+    source_root: Path,
+    target_root: Path,
+    config: GovernanceConfig,
+    *,
+    keep_target_config: bool,
+) -> dict[str, Any]:
+    """Merge governance.config.yaml; source is authoritative unless keep_target_config."""
+    diff: dict[str, Any] = {
+        "overwritten": [],
+        "kept_from_target": [],
+        "path_rewrites": {},
+        "added_from_source": [],
+        "dropped_from_target": [],
+    }
     source_path = source_root / "governance.config.yaml"
     target_path = target_root / "governance.config.yaml"
     if not source_path.is_file():
-        return warnings
+        return diff
 
     with source_path.open("r", encoding="utf-8") as handle:
         source_data = yaml.safe_load(handle)
     if not isinstance(source_data, dict):
-        return warnings
+        return diff
 
     target_data: dict[str, Any] = {}
     if target_path.is_file():
@@ -58,21 +110,48 @@ def _merge_config_file(source_root: Path, target_root: Path) -> list[str]:
             if isinstance(loaded, dict):
                 target_data = loaded
 
-    source_home = source_data.get("openclaw_home")
-    target_home = target_data.get("openclaw_home")
-    if source_home and target_home and str(source_home) != str(target_home):
-        warnings.append(
-            f"openclaw_home differs: source={source_home!r} target={target_home!r} (target kept)"
-        )
+    if keep_target_config:
+        merged = dict(target_data)
+        for key, value in source_data.items():
+            if key not in merged:
+                merged[key] = value
+                diff["added_from_source"].append(key)
+        for key in source_data:
+            if key in target_data and target_data[key] != source_data[key]:
+                if key not in PATH_REWRITE_KEYS:
+                    diff["kept_from_target"].append(key)
+    else:
+        merged = dict(source_data)
+        for key in source_data:
+            if key in target_data and target_data[key] != source_data[key]:
+                if key in PATH_REWRITE_KEYS:
+                    diff["path_rewrites"][key] = {
+                        "source": source_data[key],
+                        "target_before": target_data[key],
+                    }
+                else:
+                    diff["overwritten"].append(key)
+            elif key not in target_data:
+                diff["added_from_source"].append(key)
+        for key in target_data:
+            if key not in source_data:
+                diff["dropped_from_target"].append(key)
 
-    for key, value in source_data.items():
-        if key not in target_data:
-            target_data[key] = value
+    merged["governance_root"] = str(target_root)
+    merged["openclaw_home"] = str(config.openclaw_home)
+    for key, value in (
+        ("governance_root", str(target_root)),
+        ("openclaw_home", str(config.openclaw_home)),
+    ):
+        existing = diff["path_rewrites"].get(key)
+        if isinstance(existing, dict):
+            existing["target_after"] = value
+        else:
+            diff["path_rewrites"][key] = {"target_after": value}
 
-    target_data.setdefault("governance_root", str(target_root))
     with target_path.open("w", encoding="utf-8") as handle:
-        yaml.dump(target_data, handle, sort_keys=False, allow_unicode=True)
-    return warnings
+        yaml.dump(merged, handle, sort_keys=False, allow_unicode=True)
+    return diff
 
 
 def run_adopt(
@@ -80,6 +159,7 @@ def run_adopt(
     *,
     source_root: Path,
     write: bool = False,
+    keep_target_config: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     source = source_root.resolve()
     target = config.governance_root.resolve()
@@ -89,6 +169,7 @@ def run_adopt(
         "source_root": str(source),
         "target_root": str(target),
         "write": write,
+        "keep_target_config": keep_target_config,
     }
 
     if not is_governance_root(source):
@@ -106,9 +187,6 @@ def run_adopt(
         return 2, report
 
     source_registry = load_registry(source_registry_path)
-    runbook_summary = {"copied": [], "skipped": []}
-    registry_summary: dict[str, Any] = {}
-    config_warnings: list[str] = []
 
     if write:
         if not target.exists() or not any(target.iterdir()):
@@ -118,7 +196,13 @@ def run_adopt(
             return 2, report
 
         runbook_summary = _copy_runbooks_if_missing(source, target)
-        config_warnings = _merge_config_file(source, target)
+        docs_summary = _copy_support_docs(source, target)
+        config_diff = _adopt_config_file(
+            source,
+            target,
+            config,
+            keep_target_config=keep_target_config,
+        )
 
         target_registry_path = target / "workflows" / "registry.yaml"
         if target_registry_path.is_file():
@@ -133,23 +217,32 @@ def run_adopt(
                 "workflows": [],
             }
 
-        backup_path = target / "workflows" / f"registry.pre-adopt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.yaml"
+        backup_path = target / "workflows" / (
+            f"registry.pre-adopt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.yaml"
+        )
         if target_registry_path.is_file():
             shutil.copy2(target_registry_path, backup_path)
             report["registry_backup"] = str(backup_path)
 
-        registry_summary = merge_registry_for_adopt(target_registry, source_registry)
+        registry_summary = merge_registry_for_adopt(
+            target_registry,
+            source_registry,
+            source_authoritative=not keep_target_config,
+        )
         target_registry["generated_at"] = report["generated_at"]
         target_registry_path.parent.mkdir(parents=True, exist_ok=True)
         with target_registry_path.open("w", encoding="utf-8") as handle:
             yaml.dump(target_registry, handle, sort_keys=False, allow_unicode=True)
 
-        report_path = target / "workflows" / f"adoption-report-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+        report_path = target / "workflows" / (
+            f"adoption-report-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+        )
         report.update(
             {
                 "runbooks": runbook_summary,
+                "docs": docs_summary,
                 "registry": registry_summary,
-                "config_warnings": config_warnings,
+                "config": config_diff,
             }
         )
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -182,6 +275,9 @@ def _print_adoption_report(report: dict[str, Any]) -> None:
     runbooks = report.get("runbooks") or {}
     print(f"runbooks copied: {len(runbooks.get('copied', []))}")
     print(f"runbooks skipped (already exist): {len(runbooks.get('skipped', []))}")
+    docs = report.get("docs") or {}
+    print(f"docs copied: {len(docs.get('copied', []))}")
+    print(f"docs skipped (already exist): {len(docs.get('skipped', []))}")
     reg = report.get("registry") or {}
     print(f"workflows created: {len(reg.get('workflows_created', []))}")
     print(f"workflows updated: {len(reg.get('workflows_updated', []))}")
@@ -189,8 +285,13 @@ def _print_adoption_report(report: dict[str, Any]) -> None:
         f"workflows skipped (protected status): {len(reg.get('workflows_skipped_protected', []))}"
     )
     print(f"raci_domains added: {reg.get('raci_domains_added', 0)}")
-    for warning in report.get("config_warnings") or []:
-        print(f"WARN {warning}")
+    config_diff = report.get("config") or {}
+    if config_diff.get("overwritten"):
+        print(f"config keys overwritten from source: {', '.join(config_diff['overwritten'])}")
+    if config_diff.get("kept_from_target"):
+        print(f"config keys kept from target: {', '.join(config_diff['kept_from_target'])}")
+    if config_diff.get("dropped_from_target"):
+        print(f"config keys dropped from target: {', '.join(config_diff['dropped_from_target'])}")
     if report.get("report_path"):
         print(f"report: {report['report_path']}")
     if report.get("registry_backup"):

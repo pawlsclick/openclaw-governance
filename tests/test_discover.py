@@ -1,4 +1,15 @@
-from openclaw_governance.discover import parse_cron_jobs, slugify, workflow_id_for_cron
+from openclaw_governance.discover import (
+    DiscoveryResult,
+    DiscoveredAgent,
+    CronJob,
+    cron_fingerprint,
+    cron_instance_group_key,
+    parse_cron_jobs,
+    slugify,
+    workflow_id_for_cron,
+)
+from openclaw_governance.materialize import materialize_from_discovery
+from openclaw_governance.config import GovernanceConfig
 
 
 def test_slugify() -> None:
@@ -21,3 +32,54 @@ def test_parse_cron_jobs_dedupes_exact_repeats_only() -> None:
     assert len(parsed) == 3
     assert [job.job_id for job in parsed] == ["job-1", "job-2", ""]
     assert [job.name for job in parsed] == ["Alpha", "Beta", "job-2"]
+
+
+def test_cron_instance_groups_in_discovery_dict() -> None:
+    job_a = CronJob(
+        agent_id="main",
+        job_id="j1",
+        name="sync",
+        enabled=True,
+        schedule='{"expr": "0 9 * * *", "kind": "cron"}',
+        message_preview="a",
+        fingerprint="fp1",
+        instance_group_key=cron_instance_group_key("main", "sync", '{"expr": "0 9 * * *", "kind": "cron"}'),
+    )
+    job_b = CronJob(
+        agent_id="main",
+        job_id="j2",
+        name="sync",
+        enabled=True,
+        schedule='{"expr": "0 9 * * *", "kind": "cron"}',
+        message_preview="b",
+        fingerprint="fp2",
+        instance_group_key=job_a.instance_group_key,
+    )
+    result = DiscoveryResult(
+        generated_at="2026-01-01T00:00:00Z",
+        openclaw_home="/oc",
+        openclaw_config_path="/oc/openclaw.json",
+        agents=[DiscoveredAgent(agent_id="main", name="Main", role="r", workspace="/w", cron_jobs=[job_a, job_b])],
+    )
+    groups = result.cron_instance_groups()
+    assert len(groups) == 1
+    assert groups[0]["kind"] == "fan_out"
+    assert groups[0]["job_count"] == 2
+
+
+def test_materialize_groups_cron_jobs_into_one_workflow(tmp_path) -> None:
+    schedule = '{"expr": "0 9 * * *", "kind": "cron"}'
+    group_key = cron_instance_group_key("main", "fan", schedule)
+    jobs = [
+        CronJob("main", "j1", "fan", True, schedule, "one", "fp1", group_key),
+        CronJob("main", "j2", "fan", True, schedule, "two", "fp2", group_key),
+    ]
+    result = DiscoveryResult(
+        generated_at="2026-01-01T00:00:00Z",
+        openclaw_home=str(tmp_path / "oc"),
+        openclaw_config_path=str(tmp_path / "oc" / "openclaw.json"),
+        agents=[DiscoveredAgent("main", "Main", "role", str(tmp_path / "w"), cron_jobs=jobs)],
+    )
+    config = GovernanceConfig(openclaw_home=tmp_path / "oc", governance_root=tmp_path / "gov")
+    summary = materialize_from_discovery(result, config, write=False, staged=True)
+    assert summary["proposed_workflow_count"] == 1
