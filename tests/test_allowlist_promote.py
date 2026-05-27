@@ -174,3 +174,20 @@ def test_dry_run_would_import_respects_allowlist(tmp_path: Path) -> None:
 
     assert summary["would_import_runbooks"] == []
     assert summary["proposed_workflow_count"] == 1
+
+
+def test_empty_allowlist_warns_and_promotes_nothing(tmp_path: Path) -> None:
+    gov = tmp_path / "gov"
+    gov.mkdir()
+    registry_path = gov / "workflows" / "registry.yaml"
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(yaml.dump(_empty_registry(), sort_keys=False), encoding="utf-8")
+
+    result = _discovery_with_cron_and_workspace(tmp_path)
+    config = GovernanceConfig(openclaw_home=tmp_path / "oc", governance_root=gov)
+    summary = materialize_from_discovery(result, config, promote=True, allowlist=set())
+
+    assert summary.get("allowlist_empty_warning")
+    assert summary["created_workflows"] == []
+    registry = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
+    assert registry["workflows"] == []
