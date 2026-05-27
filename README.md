@@ -23,9 +23,9 @@ flowchart TB
   GH -->|CI| DRIFT["governance-drift.yml\nregen --check · check"]
 ```
 
-## Install (v0.5.0)
+## Install (v0.5.1)
 
-Pinned release: `@v0.5.0`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
+Pinned release: `@v0.5.1`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
 
 ### Ubuntu / Debian (pipx — recommended)
 
@@ -37,14 +37,14 @@ sudo apt install -y pipx python3-venv
 pipx ensurepath
 # Log out/in, or: source ~/.profile
 
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.0"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.1"
 openclaw-gov --version
 ```
 
 **Upgrade** to a newer tag (pipx matches installs by full URL — use `--force` when the tag changes):
 
 ```bash
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.0" --force
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.1" --force
 ```
 
 `pipx upgrade openclaw-governance` alone does not change an existing git tag pin.
@@ -58,7 +58,7 @@ Avoid `pip install --break-system-packages` on the host Python unless you accept
 When you already work inside a virtualenv (or a image without PEP 668 restrictions):
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.0"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.1"
 ```
 
 ### Editable dev install
@@ -92,8 +92,9 @@ openclaw-gov discover --root ~/.openclaw/governance
 # 4. Materialize registry + runbook stubs (also scaffolds README.md if missing)
 openclaw-gov discover --write --root ~/.openclaw/governance
 
-# Brownfield: preserve active/required workflows
+# Brownfield: review candidates without mutating registry (CI-safe)
 openclaw-gov discover --staged --root ~/.openclaw/governance
+openclaw-gov discover --promote --root ~/.openclaw/governance
 
 # 5. Regenerate README tables and validate
 openclaw-gov regen --write --root ~/.openclaw/governance
@@ -129,7 +130,9 @@ openclaw-gov discover --write --root .
 | `openclaw-gov discover` | Inventory agents/crons/repos (dry-run) |
 | `openclaw-gov discover --json` | Machine-readable inventory JSON on stdout (human report on stderr) |
 | `openclaw-gov discover --write` | Write `registry.yaml` + runbook stubs |
-| `openclaw-gov discover --staged` | Write registry preserving active/required workflows |
+| `openclaw-gov discover --staged` | Write inventory + `discovery-candidates.json` (no registry mutation) |
+| `openclaw-gov discover --promote` | Apply staged merge and write registry when changed |
+| `openclaw-gov discover --promote --allowlist PATH` | Promote only listed workflow ids (agents/RACI still merge) |
 | `openclaw-gov check` | Validate registry ↔ runbooks ↔ README |
 | `openclaw-gov regen --write` | Refresh README summary + RACI markers |
 | `openclaw-gov regen --check` | CI drift check (use with `openclaw-gov check`) |
@@ -233,7 +236,7 @@ Promote workflows to `active` / `required` after you verify triggers and fill in
 
 ## CI
 
-After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs this package from git and runs `openclaw-gov regen --check` and `openclaw-gov check`.
+After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs this package from git, runs `openclaw-gov regen --check` and `openclaw-gov check`, and runs `openclaw-gov discover --staged` with `git diff --exit-code workflows/registry.yaml` so staged discovery cannot mutate the registry in CI.
 
 ## License
 

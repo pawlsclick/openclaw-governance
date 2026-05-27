@@ -5,7 +5,7 @@ Use this guide when you already have a governance repository with hand-authored 
 ## Prerequisites
 
 - OpenClaw installed with `openclaw.json` listing your agents
-- `openclaw-gov` v0.5.0+ installed ([README](../README.md))
+- `openclaw-gov` v0.5.1+ installed ([README](../README.md))
 - A backup or git commit of your governance repo before merging
 
 ## Recommended migration flow
@@ -28,8 +28,10 @@ openclaw-gov discover --json --root ~/.openclaw/governance | jq .
 
 # 6. Review inventory (human report is on stderr; cron_instance_groups shows fan-out)
 
-# 7. Stage discovered workflows without overwriting promoted rows
+# 7. Review discovery candidates (CI-safe — does not mutate registry.yaml)
 openclaw-gov discover --staged --root ~/.openclaw/governance
+# Review workflows/discovery-candidates.json, then apply when ready:
+openclaw-gov discover --promote --root ~/.openclaw/governance
 
 # 8. Regenerate README sections (packaged generator — use in CI)
 openclaw-gov regen --write --root ~/.openclaw/governance
@@ -106,19 +108,28 @@ openclaw-gov check
 
 ## First discover after adoption
 
-Prefer **`discover --staged`** on brownfield systems:
+Prefer **`discover --staged`** on brownfield systems (v0.5.1+):
+
+- Writes `workflows/discovered-inventory.json` and `workflows/discovery-candidates.json`
+- Does **not** mutate `registry.yaml` (safe for CI: `git diff workflows/registry.yaml` should be empty)
+- Classifies findings (`missing_active_cron`, `workspace_runbook_candidate`, `protected_existing_changed`, etc.)
+
+Apply changes explicitly with **`discover --promote`** (or `discover --promote --allowlist PATH`):
 
 - Adds new crons as `status: discovered`
-- Refreshes discovery-owned fields on existing `discovered` rows
-- Skips hand-edited fields on `active` / `required` workflows (only updates `runtime_status` when cron enablement changes)
+- Refreshes discovery-owned fields on existing `discovered` rows only
+- Skips hand-edited fields on `active` / `required` workflows (does not change `runtime_status` on protected rows)
+- Skips registry write when there is no semantic diff
 
 ```bash
 openclaw-gov discover --staged
+# review workflows/discovery-candidates.json
+openclaw-gov discover --promote
 openclaw-gov regen --write
 openclaw-gov check
 ```
 
-Use plain `discover --write` only when you intentionally want the legacy merge behavior.
+Use plain `discover --write` only when you intentionally want the legacy merge behavior (writes registry immediately).
 
 ## Validate configuration early
 
@@ -167,10 +178,10 @@ After verifying triggers and runbooks, promote entries in `workflows/registry.ya
 
 | Symptom | Action |
 |---------|--------|
-| `jq` parse error on discover | Upgrade to v0.5.0+; ensure only JSON is piped from stdout (human report is on stderr) |
+| `jq` parse error on discover | Upgrade to v0.5.1+; ensure only JSON is piped from stdout (human report is on stderr) |
 | Missing fan-out cron jobs | Check `cron_instance_groups` in JSON; distinct payloads should appear under one group |
 | Adopt kept generic config | Re-run without `--keep-target-config`; inspect `adoption-report-*.json` |
 | regen --check fails after regen --write | Run from governance root; ensure README has governance markers from `init` |
 | discover hangs | Increase `discovery.cron_timeout_seconds`; test `openclaw cron list --agent ID --json` |
 | config ignored | Set `OPENCLAW_GOVERNANCE_ROOT` or pass `--root` |
-| inject dry-run modified files | Upgrade to v0.5.0+ (dry-run must not write) |
+| inject dry-run modified files | Upgrade to v0.5.1+ (dry-run must not write) |

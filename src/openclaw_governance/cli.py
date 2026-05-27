@@ -64,17 +64,37 @@ def cmd_config_validate(args: argparse.Namespace) -> int:
     return run_validate_config(resolve_config(args))
 
 
+def _load_allowlist(path: Path) -> set[str]:
+    raw = path.read_text(encoding="utf-8")
+    data = json.loads(raw)
+    if isinstance(data, dict) and isinstance(data.get("workflow_ids"), list):
+        return {str(item) for item in data["workflow_ids"]}
+    if isinstance(data, list):
+        return {str(item) for item in data}
+    raise ValueError(f"allowlist must be a JSON array or object with workflow_ids: {path}")
+
+
 def _print_discover_materialization(
-    summary: dict[str, Any], *, write: bool, staged: bool, file: Any = None
+    summary: dict[str, Any], *, write: bool, staged: bool, promote: bool, file: Any = None
 ) -> None:
     out = sys.stdout if file is None else file
+    if summary.get("promote_hint"):
+        print(summary["promote_hint"], file=out)
+    if summary.get("inventory_path"):
+        print(f"inventory: {summary.get('inventory_path')}", file=out)
+    if summary.get("candidates_path"):
+        print(f"candidates: {summary.get('candidates_path')}", file=out)
+        report = summary.get("candidates") or {}
+        print(f"candidate count: {report.get('candidate_count', 0)}", file=out)
     if write:
         print("", file=out)
-        print(f"wrote registry: {summary.get('registry_path')}", file=out)
-        print(f"inventory: {summary.get('inventory_path')}", file=out)
+        if summary.get("registry_unchanged"):
+            print(f"registry unchanged (no write): {summary.get('registry_path')}", file=out)
+        else:
+            print(f"wrote registry: {summary.get('registry_path')}", file=out)
         print(f"created workflows: {len(summary.get('created_workflows', []))}", file=out)
         print(f"updated workflows: {len(summary.get('updated_workflows', []))}", file=out)
-        if staged:
+        if staged or promote:
             skipped = summary.get("skipped_protected_workflows") or []
             print(f"skipped protected workflows: {len(skipped)}", file=out)
         print(f"created runbooks: {len(summary.get('created_runbooks', []))}", file=out)
@@ -93,7 +113,8 @@ def _print_discover_materialization(
     else:
         print("", file=out)
         print(
-            "dry-run only (no files written). Use --write or --staged to materialize registry + runbooks.",
+            "Registry not written. Use --promote to apply staged merge rules, "
+            "or --write for legacy immediate registry + runbook writes.",
             file=out,
         )
         in_gov = summary.get("runbooks_in_governance")
@@ -114,26 +135,43 @@ def cmd_discover(args: argparse.Namespace) -> int:
     config = resolve_config(args)
     result = discover(config)
 
-    write = args.write or args.staged
-    summary = materialize_from_discovery(result, config, write=write, staged=args.staged)
+    allowlist: set[str] | None = None
+    allowlist_path = getattr(args, "allowlist", None)
+    if allowlist_path:
+        allowlist = _load_allowlist(Path(allowlist_path))
+
+    summary = materialize_from_discovery(
+        result,
+        config,
+        write=args.write,
+        staged=args.staged,
+        promote=args.promote,
+        allowlist=allowlist,
+    )
+
+    write_registry = args.write or args.promote
 
     if args.json:
         payload = result.to_dict()
         payload["materialization"] = summary
         sys.stdout.write(json.dumps(payload, indent=2) + "\n")
         print_discovery_report(result, file=sys.stderr)
-        _print_discover_materialization(summary, write=write, staged=args.staged, file=sys.stderr)
+        _print_discover_materialization(
+            summary,
+            write=write_registry,
+            staged=args.staged,
+            promote=args.promote,
+            file=sys.stderr,
+        )
         return 0
 
     print_discovery_report(result)
-    _print_discover_materialization(summary, write=write, staged=args.staged)
-
-    if not write:
-        out = config.governance_root / "workflows" / "discovered-inventory.json"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(result.to_dict(), indent=2) + "\n", encoding="utf-8")
-        print(f"inventory snapshot: {out}")
-
+    _print_discover_materialization(
+        summary,
+        write=write_registry,
+        staged=args.staged,
+        promote=args.promote,
+    )
     return 0
 
 
@@ -286,11 +324,28 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="Discover agents, crons, repos (dry-run by default)",
     )
-    discover_parser.add_argument("--write", action="store_true", help="Write registry + runbook stubs")
+    discover_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Legacy: write registry + runbook stubs (use with --staged for protected merge rules)",
+    )
     discover_parser.add_argument(
         "--staged",
         action="store_true",
-        help="Write registry preserving active/required workflows (implies --write)",
+        help="Write discovery-candidates.json; do not mutate registry (CI-safe review)",
+    )
+    discover_parser.add_argument(
+        "--promote",
+        action="store_true",
+        help="Apply staged merge rules and write registry when changed",
+    )
+    discover_parser.add_argument(
+        "--allowlist",
+        metavar="PATH",
+        help=(
+            "JSON workflow id allowlist for --promote (array or {workflow_ids: [...]}). "
+            "Filters proposed workflow rows only; agents and raci_domains still merge."
+        ),
     )
     discover_parser.add_argument("--json", action="store_true", help="Print inventory JSON to stdout")
     discover_parser.set_defaults(func=cmd_discover)

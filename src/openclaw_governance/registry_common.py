@@ -46,6 +46,11 @@ def effective_domain_prefix_rules(
 
 CORE_PLATFORM_DOMAINS = frozenset({"platform_notion", "platform_google"})
 
+DEFAULT_RECOGNIZED_WORKFLOW_PREFIXES: tuple[str, ...] = (
+    "platform.",
+    "workflow_registry.",
+)
+
 
 class UniqueKeyLoader(yaml.SafeLoader):
     """Reject duplicate mapping keys instead of silently overwriting."""
@@ -120,6 +125,75 @@ def agents_requiring_raci_broadcast(registry: dict[str, Any]) -> set[str]:
     return set(agent_ids(registry)) - agents_excluded_from_raci_broadcast(registry)
 
 
+def agents_for_raci_broadcast(
+    registry: dict[str, Any],
+    config_excluded: list[str] | None = None,
+) -> list[str]:
+    """Agent ids that may appear in generated RACI informed lists."""
+    excluded = agents_excluded_from_raci_broadcast(registry)
+    if config_excluded:
+        excluded.update(str(item) for item in config_excluded)
+    return sorted(set(agent_ids(registry)) - excluded)
+
+
+def platform_workflow_ids(registry: dict[str, Any]) -> set[str]:
+    ids: set[str] = set()
+    platform = registry.get("platform")
+    if not isinstance(platform, dict):
+        return ids
+    for platform_config in platform.values():
+        if not isinstance(platform_config, dict):
+            continue
+        raw = platform_config.get("workflows")
+        if isinstance(raw, list):
+            ids.update(str(item) for item in raw if item)
+    return ids
+
+
+def is_governed_workflow_id(
+    workflow_id: str,
+    registry: dict[str, Any],
+    config: Any | None = None,
+) -> bool:
+    """True when discovery should not add a new generic row from runbook scan."""
+    if workflow_id in platform_workflow_ids(registry):
+        return True
+    explicit = explicit_workflow_domains(registry)
+    if workflow_id in explicit:
+        return True
+    prefixes = list(DEFAULT_RECOGNIZED_WORKFLOW_PREFIXES)
+    if config is not None:
+        extra = getattr(config, "discovery_recognized_workflow_prefixes", None)
+        if isinstance(extra, list):
+            prefixes.extend(str(item) for item in extra)
+    for prefix in prefixes:
+        if workflow_id.startswith(prefix) or workflow_id == prefix.rstrip("."):
+            return True
+    return False
+
+
+def should_skip_runbook_proposal(
+    workflow_id: str,
+    registry: dict[str, Any],
+    config: Any | None = None,
+) -> bool:
+    """True when an on-disk runbook should not create a new registry row."""
+    if workflow_id in _workflow_index(registry):
+        return True
+    return is_governed_workflow_id(workflow_id, registry, config)
+
+
+def _workflow_index(registry: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    workflows = registry.get("workflows")
+    if not isinstance(workflows, list):
+        return {}
+    return {
+        str(item["id"]): item
+        for item in workflows
+        if isinstance(item, dict) and item.get("id")
+    }
+
+
 def explicit_workflow_domains(registry: dict[str, Any]) -> dict[str, str]:
     mapping = registry.get("raci_workflow_domains")
     if not isinstance(mapping, dict):
@@ -151,9 +225,18 @@ def ensure_raci_domains(
     agent_ids_list: list[str],
     *,
     accountable: str = "Operator",
+    config_excluded: list[str] | None = None,
 ) -> None:
     """Merge default RACI domains into registry without overwriting operator edits."""
-    defaults = default_raci_domains(agent_ids_list, accountable=accountable)
+    broadcast = agents_for_raci_broadcast(registry, config_excluded)
+    if not broadcast and agent_ids_list:
+        broadcast = [
+            agent_id
+            for agent_id in agent_ids_list
+            if agent_id not in agents_excluded_from_raci_broadcast(registry)
+            and agent_id not in set(config_excluded or [])
+        ]
+    defaults = default_raci_domains(broadcast, accountable=accountable)
     current = registry.get("raci_domains")
     if not isinstance(current, dict):
         current = {}
@@ -164,11 +247,11 @@ def ensure_raci_domains(
 
 
 def default_raci_domains(
-    agent_ids_list: list[str],
+    broadcast_agent_ids: list[str],
     *,
     accountable: str = "Operator",
 ) -> dict[str, Any]:
-    informed = sorted(set(agent_ids_list))
+    informed = sorted(set(broadcast_agent_ids))
     main_responsible = "main" if "main" in informed else (informed[0] if informed else "main")
     domains: dict[str, Any] = {
         "governance_registry": {
