@@ -471,7 +471,9 @@ def materialize_from_discovery(
     existing_agents = registry.get("agents")
     if not isinstance(existing_agents, list):
         existing_agents = []
-    registry["agents"] = merge_agents(existing_agents, proposed_agents)
+    registry["agents"] = merge_agents(
+        existing_agents, proposed_agents, refresh_discovery_fields=True
+    )
     agent_id_list = [entry["id"] for entry in registry["agents"]]
     accountable = config.accountable_humans[0] if config.accountable_humans else "Operator"
     ensure_raci_domains(
@@ -532,10 +534,9 @@ def materialize_from_discovery(
             )
         return summary
 
-    if not diff["changed"]:
+    registry_unchanged = not diff["changed"]
+    if registry_unchanged:
         summary["registry_unchanged"] = True
-        summary["registry_path"] = str(registry_path)
-        return summary
 
     scaffolded = ensure_governance_scaffold(config)
     if scaffolded:
@@ -575,8 +576,9 @@ def materialize_from_discovery(
         )
         summary["created_runbooks"].append(runbook_rel)
 
-    with registry_path.open("w", encoding="utf-8") as handle:
-        yaml.dump(registry, handle, sort_keys=False, allow_unicode=True)
+    if not registry_unchanged:
+        with registry_path.open("w", encoding="utf-8") as handle:
+            yaml.dump(registry, handle, sort_keys=False, allow_unicode=True)
 
     summary["registry_path"] = str(registry_path)
     return summary
