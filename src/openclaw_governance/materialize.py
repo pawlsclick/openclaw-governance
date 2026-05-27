@@ -19,6 +19,7 @@ from openclaw_governance.discover import (
 )
 from openclaw_governance.governance_scaffold import ensure_governance_scaffold
 from openclaw_governance.runbook_import import render_imported_runbook
+from openclaw_governance.registry_merge import merge_agents, merge_workflows
 from openclaw_governance.registry_common import (
     UniqueKeyLoader,
     construct_mapping_without_duplicate_keys,
@@ -214,10 +215,12 @@ def workflow_entry_from_cron(
         "runbook": runbook,
         "runtime_status": runtime_status,
         "code_management": default_code_management(),
+        "cron_fingerprint": job.fingerprint,
         "discovered_from": {
             "source": "openclaw-gov discover",
             "cron_name": job.name,
             "message_preview": job.message_preview,
+            "cron_fingerprint": job.fingerprint,
         },
     }
 
@@ -256,64 +259,21 @@ def apply_inferred_raci_domain(
         workflow["raci_domain"] = domain
 
 
-CRON_DISCOVERY_REFRESH_FIELDS = (
-    "agent",
-    "purpose",
-    "trigger",
-    "orchestration",
-    "success_criteria",
-    "failure_modes",
-    "tests",
-    "discovered_from",
-)
-
-
-def merge_workflows(
-    existing: list[dict[str, Any]],
-    proposed: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[str], list[str]]:
-    by_id = {str(item.get("id")): item for item in existing if isinstance(item, dict) and item.get("id")}
-    created: list[str] = []
-    updated: list[str] = []
-
-    for workflow in proposed:
-        workflow_id = str(workflow.get("id"))
-        if workflow_id in by_id:
-            current = by_id[workflow_id]
-            # Preserve operator edits; refresh discovery-owned cron fields when
-            # a runbook-discovered row is later matched to a real cron job.
-            if workflow.get("cron_job_ids"):
-                current["cron_job_ids"] = workflow["cron_job_ids"]
-            if (
-                workflow.get("orchestration") == "openclaw_cron"
-                and workflow.get("runtime_status")
-            ):
-                if current.get("orchestration") != "openclaw_cron":
-                    for field in CRON_DISCOVERY_REFRESH_FIELDS:
-                        if field in workflow:
-                            current[field] = workflow[field]
-                current["runtime_status"] = workflow["runtime_status"]
-            updated.append(workflow_id)
-        else:
-            by_id[workflow_id] = workflow
-            created.append(workflow_id)
-
-    merged = sorted(by_id.values(), key=lambda item: str(item.get("id", "")))
-    return merged, created, updated
-
-
 def materialize_from_discovery(
     result: DiscoveryResult,
     config: GovernanceConfig,
     *,
     write: bool = False,
+    staged: bool = False,
 ) -> dict[str, Any]:
     """Build or update registry + runbooks. Returns summary dict."""
     workspace_by_workflow = {item.workflow_id: item for item in result.workspace_runbooks}
     summary: dict[str, Any] = {
         "write": write,
+        "staged": staged,
         "created_workflows": [],
         "updated_workflows": [],
+        "skipped_protected_workflows": [],
         "created_workflows_from_runbooks": [],
         "created_runbooks": [],
         "skipped_runbooks": [],
@@ -386,7 +346,11 @@ def materialize_from_discovery(
         }
 
     registry["generated_at"] = result.generated_at
-    registry["agents"] = agents_registry_entries(result, config)
+    proposed_agents = agents_registry_entries(result, config)
+    existing_agents = registry.get("agents")
+    if not isinstance(existing_agents, list):
+        existing_agents = []
+    registry["agents"] = merge_agents(existing_agents, proposed_agents)
     agent_id_list = [entry["id"] for entry in registry["agents"]]
     accountable = config.accountable_humans[0] if config.accountable_humans else "Operator"
     ensure_raci_domains(registry, agent_id_list, accountable=accountable)
@@ -395,7 +359,11 @@ def materialize_from_discovery(
     if not isinstance(existing_workflows, list):
         existing_workflows = []
 
-    merged, created, updated = merge_workflows(existing_workflows, proposed_workflows)
+    merged, created, updated, skipped_protected = merge_workflows(
+        existing_workflows,
+        proposed_workflows,
+        staged=staged,
+    )
     prefix_rules = effective_domain_prefix_rules(tuple(config.domain_prefix_rules), registry)
     for workflow in merged:
         if isinstance(workflow, dict):
@@ -403,6 +371,7 @@ def materialize_from_discovery(
     registry["workflows"] = merged
     summary["created_workflows"] = created
     summary["updated_workflows"] = updated
+    summary["skipped_protected_workflows"] = skipped_protected
     runbook_workflow_ids = {runbook.workflow_id for runbook in governance_runbooks}
     summary["created_workflows_from_runbooks"] = [
         workflow_id for workflow_id in created if workflow_id in runbook_workflow_ids
@@ -475,6 +444,8 @@ def materialize_from_discovery(
         runbooks=scan_runbooks_on_disk(config, known_agent_ids),
         workspace_runbooks=result.workspace_runbooks,
         warnings=result.warnings,
+        errors=result.errors,
+        agent_statuses=result.agent_statuses,
     )
     inventory_path.write_text(
         json.dumps(inventory_result.to_dict(), indent=2) + "\n",

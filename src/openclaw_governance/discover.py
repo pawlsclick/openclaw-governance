@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +33,17 @@ class CronJob:
     enabled: bool
     schedule: str
     message_preview: str
+    fingerprint: str = ""
+
+
+@dataclass
+class AgentDiscoveryStatus:
+    agent_id: str
+    ok: bool
+    cron_count: int = 0
+    error: str | None = None
+    phase: str = "cron_list"
+    duration_ms: int = 0
 
 
 @dataclass
@@ -73,6 +86,8 @@ class DiscoveryResult:
     runbooks: list[DiscoveredRunbook] = field(default_factory=list)
     workspace_runbooks: list[DiscoveredWorkspaceRunbook] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    agent_statuses: list[AgentDiscoveryStatus] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -80,6 +95,18 @@ class DiscoveryResult:
             "openclaw_home": self.openclaw_home,
             "openclaw_config_path": self.openclaw_config_path,
             "warnings": self.warnings,
+            "errors": self.errors,
+            "agent_statuses": [
+                {
+                    "agent_id": status.agent_id,
+                    "ok": status.ok,
+                    "cron_count": status.cron_count,
+                    "error": status.error,
+                    "phase": status.phase,
+                    "duration_ms": status.duration_ms,
+                }
+                for status in self.agent_statuses
+            ],
             "runbooks": [
                 {
                     "workflow_id": runbook.workflow_id,
@@ -115,6 +142,7 @@ class DiscoveryResult:
                             "enabled": job.enabled,
                             "schedule": job.schedule,
                             "message_preview": job.message_preview,
+                            "fingerprint": job.fingerprint,
                         }
                         for job in agent.cron_jobs
                     ],
@@ -124,6 +152,11 @@ class DiscoveryResult:
                 for agent in self.agents
             ],
         }
+
+
+def cron_fingerprint(agent_id: str, name: str, schedule: str, message_preview: str) -> str:
+    payload = f"{agent_id}\0{name}\0{schedule}\0{message_preview}"
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
 def scan_runbooks_on_disk(
@@ -252,19 +285,19 @@ def parse_agents_from_config(openclaw_config: dict[str, Any], config: Governance
     return discovered
 
 
-def run_openclaw_cron_list(agent_id: str) -> tuple[list[dict[str, Any]], str | None]:
+def run_openclaw_cron_list(agent_id: str, *, timeout_seconds: int) -> tuple[list[dict[str, Any]], str | None]:
     try:
         proc = subprocess.run(
             ["openclaw", "cron", "list", "--agent", agent_id, "--json"],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=timeout_seconds,
             check=False,
         )
     except FileNotFoundError:
         return [], "openclaw CLI not found on PATH"
     except subprocess.TimeoutExpired:
-        return [], f"openclaw cron list timed out for agent {agent_id}"
+        return [], f"openclaw cron list timed out for agent {agent_id} after {timeout_seconds}s"
 
     if proc.returncode != 0:
         stderr = (proc.stderr or proc.stdout or "").strip()
@@ -285,16 +318,19 @@ def run_openclaw_cron_list(agent_id: str) -> tuple[list[dict[str, Any]], str | N
     return [], None
 
 
-def parse_cron_jobs(agent_id: str, jobs: list[dict[str, Any]]) -> list[CronJob]:
+def parse_cron_jobs(
+    agent_id: str,
+    jobs: list[dict[str, Any]],
+    *,
+    warnings: list[str] | None = None,
+) -> list[CronJob]:
     parsed: list[CronJob] = []
-    seen: set[tuple[str, str]] = set()
+    seen_fingerprints: dict[str, tuple[str, str]] = {}
+    warn = warnings if warnings is not None else []
+
     for job in jobs:
         job_id = str(job.get("id", ""))
         name = str(job.get("name") or job_id or "unnamed")
-        dedupe_key = (job_id, name)
-        if dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
         enabled = bool(job.get("enabled", True))
         schedule = ""
         sched = job.get("schedule")
@@ -306,6 +342,16 @@ def parse_cron_jobs(agent_id: str, jobs: list[dict[str, Any]]) -> list[CronJob]:
         payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
         message = payload.get("message", "")
         preview = str(message).replace("\n", " ")[:160]
+        fingerprint = cron_fingerprint(agent_id, name, schedule, preview)
+
+        if fingerprint in seen_fingerprints:
+            prior_id, prior_name = seen_fingerprints[fingerprint]
+            warn.append(
+                f"DUPLICATE CRON for agent `{agent_id}`: fingerprint `{fingerprint}` "
+                f"matches jobs `{prior_name}` ({prior_id}) and `{name}` ({job_id}); keeping first only"
+            )
+            continue
+        seen_fingerprints[fingerprint] = (job_id, name)
 
         parsed.append(
             CronJob(
@@ -315,6 +361,7 @@ def parse_cron_jobs(agent_id: str, jobs: list[dict[str, Any]]) -> list[CronJob]:
                 enabled=enabled,
                 schedule=schedule,
                 message_preview=preview,
+                fingerprint=fingerprint,
             )
         )
     return parsed
@@ -360,14 +407,45 @@ def scan_scripts(workspace: Path, globs: list[str]) -> list[str]:
 
 def discover(config: GovernanceConfig) -> DiscoveryResult:
     warnings: list[str] = []
+    errors: list[dict[str, Any]] = []
+    agent_statuses: list[AgentDiscoveryStatus] = []
+    cron_timeout = config.discovery_cron_timeout_seconds
+
     openclaw_config = load_openclaw_config(config)
     agents = parse_agents_from_config(openclaw_config, config)
 
     for agent in agents:
-        jobs_raw, cron_warning = run_openclaw_cron_list(agent.agent_id)
+        started = time.monotonic()
+        jobs_raw, cron_warning = run_openclaw_cron_list(agent.agent_id, timeout_seconds=cron_timeout)
+        duration_ms = int((time.monotonic() - started) * 1000)
+
         if cron_warning:
             warnings.append(cron_warning)
-        agent.cron_jobs = parse_cron_jobs(agent.agent_id, jobs_raw)
+            errors.append(
+                {
+                    "agent_id": agent.agent_id,
+                    "phase": "cron_list",
+                    "message": cron_warning,
+                }
+            )
+            agent_statuses.append(
+                AgentDiscoveryStatus(
+                    agent_id=agent.agent_id,
+                    ok=False,
+                    error=cron_warning,
+                    duration_ms=duration_ms,
+                )
+            )
+        else:
+            agent.cron_jobs = parse_cron_jobs(agent.agent_id, jobs_raw, warnings=warnings)
+            agent_statuses.append(
+                AgentDiscoveryStatus(
+                    agent_id=agent.agent_id,
+                    ok=True,
+                    cron_count=len(agent.cron_jobs),
+                    duration_ms=duration_ms,
+                )
+            )
 
         workspace = Path(agent.workspace)
         if config.discovery_scan_git_repos and workspace.is_dir():
@@ -396,6 +474,8 @@ def discover(config: GovernanceConfig) -> DiscoveryResult:
         runbooks=runbooks,
         workspace_runbooks=workspace_runbooks,
         warnings=warnings,
+        errors=errors,
+        agent_statuses=agent_statuses,
     )
 
 
@@ -411,6 +491,11 @@ def print_discovery_report(result: DiscoveryResult) -> None:
     print(f"Cron jobs: {cron_total}")
     print(f"Runbooks in governance root: {len(result.runbooks)}")
     print(f"Runbooks in agent workspaces: {len(result.workspace_runbooks)}")
+    for status in result.agent_statuses:
+        if status.ok:
+            print(f"OK agent {status.agent_id}: {status.cron_count} crons ({status.duration_ms}ms)")
+        else:
+            print(f"ERROR agent {status.agent_id}: {status.error} ({status.duration_ms}ms)")
     for warning in result.warnings:
         print(f"WARN {warning}")
     print("")
@@ -424,7 +509,10 @@ def print_discovery_report(result: DiscoveryResult) -> None:
     if result.runbooks or result.workspace_runbooks:
         print("")
     for agent in result.agents:
-        print(f"- {agent.agent_id}: workspace={agent.workspace} crons={len(agent.cron_jobs)} scripts={len(agent.script_paths)}")
+        print(
+            f"- {agent.agent_id}: workspace={agent.workspace} "
+            f"crons={len(agent.cron_jobs)} scripts={len(agent.script_paths)}"
+        )
         for job in agent.cron_jobs:
             state = "enabled" if job.enabled else "disabled"
             print(f"    cron [{state}] {job.name} -> {workflow_id_for_cron(agent.agent_id, job.name)}")

@@ -11,6 +11,9 @@ import yaml
 from openclaw_governance.paths import default_governance_root, default_openclaw_home, expand
 from openclaw_governance.registry_common import DEFAULT_DOMAIN_PREFIX_RULES
 
+DEFAULT_CRON_TIMEOUT_SECONDS = 45
+MAX_CRON_TIMEOUT_SECONDS = 120
+
 
 @dataclass
 class GovernanceConfig:
@@ -27,6 +30,7 @@ class GovernanceConfig:
     discovery_scan_workspace_runbooks: bool = True
     discovery_workspace_runbook_glob: str = "**/*runbook*.md"
     discovery_script_globs: list[str] = field(default_factory=lambda: ["scripts/**/*.py", "automation/**/*.py"])
+    discovery_cron_timeout_seconds: int = 45
     require_readme_markers: bool = True
     finance_agent_owner_check: bool = False
 
@@ -116,6 +120,13 @@ def load_config(
     if not isinstance(script_globs, list):
         script_globs = ["scripts/**/*.py", "automation/**/*.py"]
 
+    raw_timeout = discovery_cfg.get("cron_timeout_seconds", DEFAULT_CRON_TIMEOUT_SECONDS)
+    try:
+        cron_timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        cron_timeout = DEFAULT_CRON_TIMEOUT_SECONDS
+    cron_timeout = max(1, min(cron_timeout, MAX_CRON_TIMEOUT_SECONDS))
+
     return GovernanceConfig(
         openclaw_home=home,
         governance_root=gov_root,
@@ -132,6 +143,7 @@ def load_config(
             discovery_cfg.get("scan_workspace_runbook_glob", "**/*runbook*.md")
         ),
         discovery_script_globs=[str(item) for item in script_globs],
+        discovery_cron_timeout_seconds=cron_timeout,
         require_readme_markers=bool(data.get("require_readme_markers", True)),
         finance_agent_owner_check=bool(data.get("finance_agent_owner_check", False)),
     )

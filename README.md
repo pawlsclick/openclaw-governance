@@ -23,9 +23,9 @@ flowchart TB
   GH -->|CI| DRIFT["governance-drift.yml\nregen --check · check"]
 ```
 
-## Install (v0.3.0)
+## Install (v0.4.0)
 
-Pinned release: `@v0.3.0`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
+Pinned release: `@v0.4.0`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
 
 ### Ubuntu / Debian (pipx — recommended)
 
@@ -37,14 +37,14 @@ sudo apt install -y pipx python3-venv
 pipx ensurepath
 # Log out/in, or: source ~/.profile
 
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.3.0"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.4.0"
 openclaw-gov --version
 ```
 
 **Upgrade** to a newer tag (pipx matches installs by full URL — use `--force` when the tag changes):
 
 ```bash
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.3.0" --force
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.4.0" --force
 ```
 
 `pipx upgrade openclaw-governance` alone does not change an existing git tag pin.
@@ -58,7 +58,7 @@ Avoid `pip install --break-system-packages` on the host Python unless you accept
 When you already work inside a virtualenv (or a image without PEP 668 restrictions):
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.3.0"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.4.0"
 ```
 
 ### Editable dev install
@@ -71,11 +71,17 @@ pip install -e ".[dev]"
 
 ## Quick start
 
-Default governance root: `~/.openclaw/governance`. Pass `--root PATH` to override.
+Default governance root: `~/.openclaw/governance`. Override with `--root`, `OPENCLAW_GOVERNANCE_ROOT`, or by running inside a directory tree that contains `governance.config.yaml`.
+
+**Migrating an existing governance repo?** See [docs/migrating-existing-governance.md](docs/migrating-existing-governance.md).
 
 ```bash
 # 1. Initialize governance root (default: ~/.openclaw/governance)
 openclaw-gov init
+
+# Or adopt from an existing governance root (brownfield)
+openclaw-gov adopt --from ~/Projects/openclaw-workspace-governance --dry-run
+openclaw-gov adopt --from ~/Projects/openclaw-workspace-governance
 
 # 2. Set your GitHub remote and which agents get governance stanzas
 #    Edit ~/.openclaw/governance/governance.config.yaml
@@ -85,6 +91,9 @@ openclaw-gov discover --root ~/.openclaw/governance
 
 # 4. Materialize registry + runbook stubs (also scaffolds README.md if missing)
 openclaw-gov discover --write --root ~/.openclaw/governance
+
+# Brownfield: preserve active/required workflows
+openclaw-gov discover --staged --root ~/.openclaw/governance
 
 # 5. Regenerate README tables and validate
 openclaw-gov regen --write --root ~/.openclaw/governance
@@ -111,9 +120,14 @@ openclaw-gov discover --write --root .
 | Command | Description |
 |---------|-------------|
 | `openclaw-gov doctor` | Check OpenClaw home, config, remote URL, git origin, inject list |
+| `openclaw-gov doctor --validate-config` | Doctor + semantic config validation |
+| `openclaw-gov config validate` | Validate `governance.config.yaml` semantics |
 | `openclaw-gov init` | Scaffold governance root from templates |
+| `openclaw-gov init --adopt PATH` | Adopt from an existing governance root |
+| `openclaw-gov adopt --from PATH` | Copy/merge workflows from an existing governance root |
 | `openclaw-gov discover` | Inventory agents/crons/repos (dry-run) |
 | `openclaw-gov discover --write` | Write `registry.yaml` + runbook stubs |
+| `openclaw-gov discover --staged` | Write registry preserving active/required workflows |
 | `openclaw-gov check` | Validate registry ↔ runbooks ↔ README |
 | `openclaw-gov regen --write` | Refresh README summary + RACI markers |
 | `openclaw-gov inject-agents --write` | Add governance block to selected `AGENTS.md` files |
@@ -155,7 +169,9 @@ Requires a git repository at the governance root with `remote.url` configured. P
 - `accountable_humans` — names allowed in RACI accountable fields
 - `agents.broadcast_excluded` — cron-only agents omitted from broadcast RACI
 - `agents.inject_included` — allowlist of agent ids that receive the governance stanza in `AGENTS.md`. **Omit the key** to inject all agents; **`[]`** injects none until you pass `--agent`
-- `discovery.*` — script globs and git repo scan toggles
+- `discovery.*` — script globs, git repo scan toggles, `cron_timeout_seconds` (default 45, max 120)
+
+Root precedence: `--root` > `OPENCLAW_GOVERNANCE_ROOT` > nearest `governance.config.yaml` > `~/.openclaw/governance`.
 
 ### Automatic RACI domains (no manual registry edits)
 

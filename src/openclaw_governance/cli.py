@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from openclaw_governance import __version__
+from openclaw_governance.adopt import run_adopt
 from openclaw_governance.check_registry import run_check
 from openclaw_governance.config import load_config
 from openclaw_governance.discover import discover, print_discovery_report
@@ -15,36 +16,51 @@ from openclaw_governance.doctor import run_doctor
 from openclaw_governance.init_cmd import run_init
 from openclaw_governance.inject_agents import run_inject
 from openclaw_governance.materialize import materialize_from_discovery
-from openclaw_governance.paths import default_governance_root, default_openclaw_home, find_governance_root
+from openclaw_governance.paths import default_governance_root, default_openclaw_home, resolve_governance_root
 from openclaw_governance.regen_readme_agent_raci import run_regen_raci
 from openclaw_governance.regen_readme_summary import run_regen_summary
 from openclaw_governance.ship import run_ship_commit, run_ship_start
+from openclaw_governance.validate_config import run_validate_config
 
 
 def resolve_config(args: argparse.Namespace):
-    if args.root:
-        root = Path(args.root).resolve()
-    else:
-        root = find_governance_root()
-        if root is None:
-            root = default_governance_root(default_openclaw_home())
+    root = resolve_governance_root(cli_root=getattr(args, "root", None))
     return load_config(root)
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    return run_doctor(resolve_config(args))
+    code = run_doctor(resolve_config(args))
+    if getattr(args, "validate_config", False):
+        validate_code = run_validate_config(resolve_config(args))
+        if validate_code != 0:
+            return validate_code
+    return code
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    from openclaw_governance.paths import default_governance_root, default_openclaw_home
+    adopt_from = getattr(args, "adopt", None)
+    if adopt_from:
+        config = resolve_config(args)
+        code, _ = run_adopt(config, source_root=Path(adopt_from), write=not args.dry_run)
+        return code
 
-    root_arg = getattr(args, "root", None)
-    if root_arg:
-        root = Path(root_arg).resolve()
-    else:
-        root = default_governance_root(default_openclaw_home())
+    root = resolve_governance_root(cli_root=getattr(args, "root", None))
     config = load_config(root)
     return run_init(config, force=args.force)
+
+
+def cmd_adopt(args: argparse.Namespace) -> int:
+    config = resolve_config(args)
+    code, _ = run_adopt(
+        config,
+        source_root=Path(args.from_source),
+        write=not args.dry_run,
+    )
+    return code
+
+
+def cmd_config_validate(args: argparse.Namespace) -> int:
+    return run_validate_config(resolve_config(args))
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
@@ -56,13 +72,17 @@ def cmd_discover(args: argparse.Namespace) -> int:
     else:
         print_discovery_report(result)
 
-    summary = materialize_from_discovery(result, config, write=args.write)
-    if args.write:
+    write = args.write or args.staged
+    summary = materialize_from_discovery(result, config, write=write, staged=args.staged)
+    if write:
         print("")
         print(f"wrote registry: {summary.get('registry_path')}")
         print(f"inventory: {summary.get('inventory_path')}")
         print(f"created workflows: {len(summary.get('created_workflows', []))}")
         print(f"updated workflows: {len(summary.get('updated_workflows', []))}")
+        if args.staged:
+            skipped = summary.get("skipped_protected_workflows") or []
+            print(f"skipped protected workflows: {len(skipped)}")
         print(f"created runbooks: {len(summary.get('created_runbooks', []))}")
         scaffolded = summary.get("scaffolded_files") or []
         if scaffolded:
@@ -78,7 +98,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
             print(f"skipped workspace imports (already exist): {len(skipped_import)}")
     else:
         print("")
-        print("dry-run only (no files written). Use --write to materialize registry + runbooks.")
+        print("dry-run only (no files written). Use --write or --staged to materialize registry + runbooks.")
         in_gov = summary.get("runbooks_in_governance")
         in_ws = summary.get("runbooks_in_workspaces")
         if in_gov is not None:
@@ -92,7 +112,8 @@ def cmd_discover(args: argparse.Namespace) -> int:
         if would_import:
             print(f"would import workspace runbooks: {len(would_import)}")
 
-    if not args.write and not args.json:
+    if not write and not args.json:
+        config = resolve_config(args)
         out = config.governance_root / "workflows" / "discovered-inventory.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(result.to_dict(), indent=2) + "\n", encoding="utf-8")
@@ -157,10 +178,14 @@ def cmd_ship(args: argparse.Namespace) -> int:
     return int(args.ship_func(args))
 
 
+def cmd_config(args: argparse.Namespace) -> int:
+    return int(args.config_func(args))
+
+
 def _root_argument_help() -> str:
     return (
         "Governance root (directory with governance.config.yaml). "
-        "Default: walk up from cwd or ~/.openclaw/governance."
+        "Precedence: --root > OPENCLAW_GOVERNANCE_ROOT > nearest config > ~/.openclaw/governance."
     )
 
 
@@ -174,11 +199,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser(
+    doctor_parser = sub.add_parser(
         "doctor",
         parents=[common],
         help="Check OpenClaw home, CLI, and governance paths",
-    ).set_defaults(func=cmd_doctor)
+    )
+    doctor_parser.add_argument(
+        "--validate-config",
+        action="store_true",
+        help="Also run governance.config.yaml semantic validation",
+    )
+    doctor_parser.set_defaults(func=cmd_doctor)
 
     init_parser = sub.add_parser(
         "init",
@@ -186,7 +217,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="Initialize governance root from templates",
     )
     init_parser.add_argument("--force", action="store_true", help="Overwrite template files")
+    init_parser.add_argument(
+        "--adopt",
+        metavar="PATH",
+        help="Adopt workflows/registry from an existing governance root (alias for adopt --from)",
+    )
+    init_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --adopt: preview only, do not write",
+    )
     init_parser.set_defaults(func=cmd_init)
+
+    adopt_parser = sub.add_parser(
+        "adopt",
+        parents=[common],
+        help="Copy/merge an existing governance root into the target root",
+    )
+    adopt_parser.add_argument(
+        "--from",
+        dest="from_source",
+        required=True,
+        metavar="PATH",
+        help="Existing governance root to adopt from",
+    )
+    adopt_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview adoption without writing files",
+    )
+    adopt_parser.set_defaults(func=cmd_adopt)
+
+    config_parser = sub.add_parser(
+        "config",
+        parents=[common],
+        help="Governance configuration commands",
+    )
+    config_sub = config_parser.add_subparsers(dest="config_command", required=True)
+    config_validate = config_sub.add_parser(
+        "validate",
+        parents=[common],
+        help="Validate governance.config.yaml semantics",
+    )
+    config_validate.set_defaults(func=cmd_config, config_func=cmd_config_validate)
 
     discover_parser = sub.add_parser(
         "discover",
@@ -194,6 +267,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Discover agents, crons, repos (dry-run by default)",
     )
     discover_parser.add_argument("--write", action="store_true", help="Write registry + runbook stubs")
+    discover_parser.add_argument(
+        "--staged",
+        action="store_true",
+        help="Write registry preserving active/required workflows (implies --write)",
+    )
     discover_parser.add_argument("--json", action="store_true", help="Print inventory JSON to stdout")
     discover_parser.set_defaults(func=cmd_discover)
 
