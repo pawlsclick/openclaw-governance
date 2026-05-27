@@ -91,6 +91,7 @@ def _adopt_config_file(
         "kept_from_target": [],
         "path_rewrites": {},
         "added_from_source": [],
+        "dropped_from_target": [],
     }
     source_path = source_root / "governance.config.yaml"
     target_path = target_root / "governance.config.yaml"
@@ -131,6 +132,9 @@ def _adopt_config_file(
                     diff["overwritten"].append(key)
             elif key not in target_data:
                 diff["added_from_source"].append(key)
+        for key in target_data:
+            if key not in source_data:
+                diff["dropped_from_target"].append(key)
 
     merged["governance_root"] = str(target_root)
     merged["openclaw_home"] = str(config.openclaw_home)
