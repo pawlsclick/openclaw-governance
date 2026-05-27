@@ -132,7 +132,7 @@ openclaw-gov discover --write --root .
 | `openclaw-gov discover --write` | Write `registry.yaml` + runbook stubs |
 | `openclaw-gov discover --staged` | Write inventory + `discovery-candidates.json` (no registry mutation) |
 | `openclaw-gov discover --promote` | Apply staged merge and write registry when changed |
-| `openclaw-gov discover --promote --allowlist PATH` | Promote only listed workflow ids |
+| `openclaw-gov discover --promote --allowlist PATH` | Promote only listed workflow ids (agents/RACI still merge) |
 | `openclaw-gov check` | Validate registry ↔ runbooks ↔ README |
 | `openclaw-gov regen --write` | Refresh README summary + RACI markers |
 | `openclaw-gov regen --check` | CI drift check (use with `openclaw-gov check`) |
@@ -236,7 +236,7 @@ Promote workflows to `active` / `required` after you verify triggers and fill in
 
 ## CI
 
-After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs this package from git and runs `openclaw-gov regen --check` and `openclaw-gov check`.
+After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs this package from git, runs `openclaw-gov regen --check` and `openclaw-gov check`, and runs `openclaw-gov discover --staged` with `git diff --exit-code workflows/registry.yaml` so staged discovery cannot mutate the registry in CI.
 
 ## License
 

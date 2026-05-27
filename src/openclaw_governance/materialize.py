@@ -298,6 +298,7 @@ def build_proposed_workflows(
     side_summary: dict[str, Any] = {
         "imported_runbooks": [],
         "skipped_imported_runbooks": [],
+        "skipped_runbook_proposals": [],
     }
     known_agent_ids = {agent.agent_id for agent in result.agents}
     governance_runbooks = list(result.runbooks)
@@ -350,6 +351,7 @@ def build_proposed_workflows(
         if runbook.workflow_id in proposed_by_id:
             continue
         if should_skip_runbook_proposal(runbook.workflow_id, registry, config):
+            side_summary["skipped_runbook_proposals"].append(runbook.workflow_id)
             continue
         workspace_source = workspace_by_workflow.get(runbook.workflow_id)
         proposed_by_id[runbook.workflow_id] = workflow_entry_from_runbook(
@@ -461,6 +463,7 @@ def materialize_from_discovery(
             registry,
             proposed_workflows,
             config,
+            skipped_runbook_proposals=import_side.get("skipped_runbook_proposals", []),
         )
         summary["candidates"] = candidates_report
 

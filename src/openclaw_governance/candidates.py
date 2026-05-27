@@ -10,9 +10,7 @@ from openclaw_governance.registry_common import (
     agents_excluded_from_raci_broadcast,
     agents_for_raci_broadcast,
     default_raci_domains,
-    is_governed_workflow_id,
     raci_domains,
-    should_skip_runbook_proposal,
     _workflow_index,
 )
 from openclaw_governance.registry_merge import PROTECTED_WORKFLOW_STATUSES, _workflow_fingerprints
@@ -38,6 +36,13 @@ PROTECTED_WORKFLOW_KEYS = frozenset(
         "runbook",
     }
 )
+
+
+def _append_candidate(candidates: list[dict[str, Any]], entry: dict[str, Any]) -> None:
+    candidate_class = entry.get("class")
+    if candidate_class not in CANDIDATE_CLASSES:
+        raise ValueError(f"invalid candidate class: {candidate_class!r}")
+    candidates.append(entry)
 
 
 def _fingerprint_to_workflow_id(registry: dict[str, Any]) -> dict[str, str]:
@@ -92,6 +97,7 @@ def build_discovery_candidates(
     config: GovernanceConfig,
     *,
     warnings: list[str] | None = None,
+    skipped_runbook_proposals: list[str] | None = None,
 ) -> dict[str, Any]:
     """Classify discovery findings without mutating registry."""
     warn = warnings if warnings is not None else list(result.warnings)
@@ -101,12 +107,13 @@ def build_discovery_candidates(
 
     for warning in warn:
         if "EXACT DUPLICATE CRON" in warning:
-            candidates.append(
+            _append_candidate(
+                candidates,
                 {
                     "class": "possible_duplicate",
                     "workflow_id": None,
                     "detail": warning,
-                }
+                },
             )
 
     for workflow in proposed_workflows:
@@ -118,42 +125,46 @@ def build_discovery_candidates(
         if existing is None:
             for fp in _workflow_fingerprints(workflow):
                 if fp in fp_map and fp_map[fp] != workflow_id:
-                    candidates.append(
+                    _append_candidate(
+                        candidates,
                         {
                             "class": "possible_duplicate",
                             "workflow_id": workflow_id,
                             "detail": f"Fingerprint {fp} already maps to {fp_map[fp]}",
-                        }
+                        },
                     )
                     break
             orchestration = workflow.get("orchestration")
             if orchestration == "openclaw_cron":
-                candidates.append(
+                _append_candidate(
+                    candidates,
                     {
                         "class": "missing_active_cron",
                         "workflow_id": workflow_id,
                         "detail": "Live cron with no registry workflow row",
                         "agent": workflow.get("agent"),
                         "runtime_status": workflow.get("runtime_status"),
-                    }
+                    },
                 )
             elif workflow.get("discovered_from", {}).get("source") == "workspace_runbook":
-                candidates.append(
+                _append_candidate(
+                    candidates,
                     {
                         "class": "workspace_runbook_candidate",
                         "workflow_id": workflow_id,
                         "detail": "Workspace runbook not yet in registry",
                         "target_runbook": workflow.get("runbook"),
-                    }
+                    },
                 )
             elif workflow.get("discovered_from", {}).get("source") == "runbook_on_disk":
-                candidates.append(
+                _append_candidate(
+                    candidates,
                     {
                         "class": "workspace_runbook_candidate",
                         "workflow_id": workflow_id,
                         "detail": "Governance runbook on disk without registry row",
                         "runbook": workflow.get("runbook"),
-                    }
+                    },
                 )
             continue
 
@@ -161,14 +172,15 @@ def build_discovery_candidates(
         if status in PROTECTED_WORKFLOW_STATUSES:
             blocked = _protected_field_changes(existing, workflow)
             if blocked:
-                candidates.append(
+                _append_candidate(
+                    candidates,
                     {
                         "class": "protected_existing_changed",
                         "workflow_id": workflow_id,
                         "detail": f"Discovery would change protected fields: {', '.join(blocked)}",
                         "blocked_fields": blocked,
                         "status": status,
-                    }
+                    },
                 )
 
     broadcast = agents_for_raci_broadcast(registry, config.raci_broadcast_excluded)
@@ -177,25 +189,24 @@ def build_discovery_candidates(
         accountable=config.accountable_humans[0] if config.accountable_humans else "Operator",
     )
     for issue in _unsafe_raci_informed_additions(registry, proposed_domains, config):
-        candidates.append(
+        _append_candidate(
+            candidates,
             {
                 "class": "unsafe_raci_generated",
                 "workflow_id": None,
                 "detail": "Proposed RACI domain would inform broadcast-excluded agents",
                 **issue,
-            }
+            },
         )
+
+    skipped = sorted(set(skipped_runbook_proposals or []))
 
     return {
         "generated_at": result.generated_at,
         "candidate_count": len(candidates),
         "candidates": candidates,
         "broadcast_agents": broadcast,
-        "governed_skipped": [
-            str(w.get("id"))
-            for w in proposed_workflows
-            if w.get("id") and should_skip_runbook_proposal(str(w["id"]), registry, config)
-        ],
+        "skipped_runbook_proposals": skipped,
     }
 
 

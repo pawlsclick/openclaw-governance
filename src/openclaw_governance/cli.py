@@ -113,7 +113,8 @@ def _print_discover_materialization(
     else:
         print("", file=out)
         print(
-            "dry-run only (no files written). Use --write or --staged to materialize registry + runbooks.",
+            "Registry not written. Use --promote to apply staged merge rules, "
+            "or --write for legacy immediate registry + runbook writes.",
             file=out,
         )
         in_gov = summary.get("runbooks_in_governance")
@@ -341,7 +342,10 @@ def build_parser() -> argparse.ArgumentParser:
     discover_parser.add_argument(
         "--allowlist",
         metavar="PATH",
-        help="JSON file of workflow ids to promote (array or {workflow_ids: [...]})",
+        help=(
+            "JSON workflow id allowlist for --promote (array or {workflow_ids: [...]}). "
+            "Filters proposed workflow rows only; agents and raci_domains still merge."
+        ),
     )
     discover_parser.add_argument("--json", action="store_true", help="Print inventory JSON to stdout")
     discover_parser.set_defaults(func=cmd_discover)
