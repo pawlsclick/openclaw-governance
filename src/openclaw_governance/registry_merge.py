@@ -237,7 +237,11 @@ def merge_registry_for_adopt(
     source_agents = source.get("agents")
     if not isinstance(source_agents, list):
         source_agents = []
-    target["agents"] = merge_agents(target_agents, source_agents)
+    target["agents"] = merge_agents(
+        target_agents,
+        source_agents,
+        refresh_discovery_fields=source_authoritative,
+    )
     sections_merged.append("agents")
 
     domain_counts = merge_raci_domains(

@@ -413,7 +413,6 @@ def materialize_from_discovery(
     staged_merge = promote or (write and staged)
     report_candidates = staged
 
-    workspace_by_workflow = {item.workflow_id: item for item in result.workspace_runbooks}
     summary: dict[str, Any] = {
         "write": write_registry,
         "staged": staged,
@@ -443,7 +442,7 @@ def materialize_from_discovery(
             "workflows": [],
         }
 
-    registry = json.loads(json.dumps(registry_before))
+    registry = json.loads(json.dumps(registry_before, default=str))
     proposed_workflows, import_side, governance_runbooks = build_proposed_workflows(
         result,
         config,
