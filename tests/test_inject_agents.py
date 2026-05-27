@@ -104,3 +104,43 @@ def test_inject_file_dry_run_missing_file(tmp_path: Path) -> None:
     action = inject_file(agents_md, stanza, write=False)
     assert action == "would_create"
     assert not agents_md.is_file()
+
+
+def test_inject_preserves_content_outside_markers(tmp_path: Path) -> None:
+    agents_md = tmp_path / "AGENTS.md"
+    original = (
+        "# Custom identity\n\n"
+        "Hand-authored paragraph with trailing spaces   \n\n"
+        f"{BEGIN}\nold stanza\n{END}\n\n"
+        "## Memory rules\n"
+        "Keep this verbatim.\n"
+    )
+    agents_md.write_text(original, encoding="utf-8")
+    before = agents_md.read_bytes()
+    mtime_before = agents_md.stat().st_mtime
+
+    config = _config(tmp_path)
+    stanza = render_stanza(config)
+    action = inject_file(agents_md, stanza, write=False)
+    assert action == "would_updated"
+    assert agents_md.read_bytes() == before
+    assert agents_md.stat().st_mtime == mtime_before
+
+    inject_file(agents_md, stanza, write=True)
+    updated = agents_md.read_text(encoding="utf-8")
+    assert "# Custom identity" in updated
+    assert "Hand-authored paragraph with trailing spaces   " in updated
+    assert "## Memory rules" in updated
+    assert "Keep this verbatim." in updated
+    assert has_stanza(updated)
+    assert "old stanza" not in updated
+
+
+def test_inject_dry_run_does_not_modify_file(tmp_path: Path) -> None:
+    agents_md = tmp_path / "AGENTS.md"
+    agents_md.write_text("# Agent\n\nBootstrap content.\n", encoding="utf-8")
+    before = agents_md.read_bytes()
+
+    config = _config(tmp_path)
+    run_inject(config, write=False)
+    assert agents_md.read_bytes() == before
