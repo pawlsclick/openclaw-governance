@@ -118,7 +118,8 @@ def _adopt_config_file(
                 diff["added_from_source"].append(key)
         for key in source_data:
             if key in target_data and target_data[key] != source_data[key]:
-                diff["kept_from_target"].append(key)
+                if key not in PATH_REWRITE_KEYS:
+                    diff["kept_from_target"].append(key)
     else:
         merged = dict(source_data)
         for key in source_data:

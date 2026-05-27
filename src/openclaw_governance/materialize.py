@@ -436,16 +436,6 @@ def materialize_from_discovery(
             continue
 
         agent_id = str(workflow.get("agent", ""))
-        job = next(
-            (
-                cron
-                for agent in result.agents
-                if agent.agent_id == agent_id
-                for cron in agent.cron_jobs
-                if workflow_id_for_cron(agent_id, cron.name) == workflow_id
-            ),
-            None,
-        )
         group_jobs = [
             cron
             for agent in result.agents
@@ -453,8 +443,7 @@ def materialize_from_discovery(
             for cron in agent.cron_jobs
             if workflow_id_for_cron(agent_id, cron.name) == workflow_id
         ]
-        if group_jobs:
-            job = group_jobs[0]
+        job = group_jobs[0] if group_jobs else None
         runbook_file.write_text(
             render_runbook_stub(
                 workflow_id=workflow_id,
