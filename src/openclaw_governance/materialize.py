@@ -12,6 +12,7 @@ import yaml
 
 from openclaw_governance.config import GovernanceConfig
 from openclaw_governance.discover import (
+    DiscoveredAgent,
     DiscoveredRunbook,
     DiscoveredWorkspaceRunbook,
     DiscoveryResult,
@@ -269,6 +270,66 @@ def agents_registry_entries(result: DiscoveryResult, config: GovernanceConfig) -
     return entries
 
 
+def discovery_result_for_allowlist(
+    result: DiscoveryResult,
+    allowlist: set[str],
+) -> DiscoveryResult:
+    """Return a copy of discovery data limited to allowlisted workflow ids (materialization only)."""
+    filtered_agents: list[DiscoveredAgent] = []
+    for agent in result.agents:
+        filtered_jobs = [
+            job
+            for job in agent.cron_jobs
+            if workflow_id_for_cron(agent.agent_id, job.name) in allowlist
+        ]
+        filtered_agents.append(
+            DiscoveredAgent(
+                agent_id=agent.agent_id,
+                name=agent.name,
+                role=agent.role,
+                workspace=agent.workspace,
+                cron_jobs=filtered_jobs,
+                git_repos=list(agent.git_repos),
+                script_paths=list(agent.script_paths),
+            )
+        )
+    return DiscoveryResult(
+        generated_at=result.generated_at,
+        openclaw_home=result.openclaw_home,
+        openclaw_config_path=result.openclaw_config_path,
+        agents=filtered_agents,
+        runbooks=[rb for rb in result.runbooks if rb.workflow_id in allowlist],
+        workspace_runbooks=[
+            item for item in result.workspace_runbooks if item.workflow_id in allowlist
+        ],
+        warnings=list(result.warnings),
+        errors=list(result.errors),
+        agent_statuses=list(result.agent_statuses),
+    )
+
+
+def collect_allowlist_skips(
+    result: DiscoveryResult,
+    allowlist: set[str],
+) -> tuple[list[str], list[str]]:
+    """Workflow ids that would be proposed but are excluded by the allowlist."""
+    skipped: set[str] = set()
+    skipped_workspace: set[str] = set()
+    for item in result.workspace_runbooks:
+        if item.workflow_id not in allowlist:
+            skipped.add(item.workflow_id)
+            skipped_workspace.add(item.workflow_id)
+    for agent in result.agents:
+        for job in agent.cron_jobs:
+            workflow_id = workflow_id_for_cron(agent.agent_id, job.name)
+            if workflow_id not in allowlist:
+                skipped.add(workflow_id)
+    for runbook in result.runbooks:
+        if runbook.workflow_id not in allowlist:
+            skipped.add(runbook.workflow_id)
+    return sorted(skipped), sorted(skipped_workspace)
+
+
 def apply_inferred_raci_domain(
     workflow: dict[str, Any],
     registry: dict[str, Any],
@@ -292,6 +353,7 @@ def build_proposed_workflows(
     registry: dict[str, Any],
     *,
     write_runbooks_import: bool,
+    allowlist: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], list[DiscoveredRunbook]]:
     """Build proposed workflow entries and runbook side-effect summary."""
     workspace_by_workflow = {item.workflow_id: item for item in result.workspace_runbooks}
@@ -316,6 +378,8 @@ def build_proposed_workflows(
     elif result.workspace_runbooks:
         existing_runbook_workflow_ids = {runbook.workflow_id for runbook in governance_runbooks}
         for item in result.workspace_runbooks:
+            if allowlist is not None and item.workflow_id not in allowlist:
+                continue
             if item.workflow_id in existing_runbook_workflow_ids:
                 continue
             target = config.governance_root / item.target_runbook
@@ -348,6 +412,8 @@ def build_proposed_workflows(
         proposed_by_id[workflow_id] = entry
 
     for runbook in governance_runbooks:
+        if allowlist is not None and runbook.workflow_id not in allowlist:
+            continue
         if runbook.workflow_id in proposed_by_id:
             continue
         if should_skip_runbook_proposal(runbook.workflow_id, registry, config):
@@ -443,11 +509,32 @@ def materialize_from_discovery(
         }
 
     registry = json.loads(json.dumps(registry_before, default=str))
-    proposed_workflows, import_side, governance_runbooks = build_proposed_workflows(
+
+    full_proposed, _full_import_side, _full_governance_runbooks = build_proposed_workflows(
         result,
         config,
         registry,
+        write_runbooks_import=False,
+        allowlist=None,
+    )
+
+    materialize_result = result
+    if allowlist is not None:
+        skipped_by_allowlist, skipped_workspace = collect_allowlist_skips(result, allowlist)
+        summary["skipped_by_allowlist"] = skipped_by_allowlist
+        summary["skipped_workspace_runbook_candidates"] = skipped_workspace
+        if not allowlist:
+            summary["allowlist_empty_warning"] = (
+                "Allowlist is empty; no workflows will be promoted."
+            )
+        materialize_result = discovery_result_for_allowlist(result, allowlist)
+
+    proposed_workflows, import_side, governance_runbooks = build_proposed_workflows(
+        materialize_result,
+        config,
+        registry,
         write_runbooks_import=write_registry,
+        allowlist=allowlist,
     )
     summary["imported_runbooks"] = import_side.get("imported_runbooks", [])
     summary["skipped_imported_runbooks"] = import_side.get("skipped_imported_runbooks", [])
@@ -457,10 +544,11 @@ def materialize_from_discovery(
 
     candidates_report = None
     if report_candidates:
+        candidates_for_report = full_proposed if allowlist is not None else proposed_workflows
         candidates_report = build_discovery_candidates(
             result,
             registry,
-            proposed_workflows,
+            candidates_for_report,
             config,
             skipped_runbook_proposals=import_side.get("skipped_runbook_proposals", []),
         )
@@ -520,16 +608,18 @@ def materialize_from_discovery(
         summary["proposed_workflow_count"] = len(proposed_workflows)
         existing_ids = {str(item.get("id")) for item in existing_workflows if isinstance(item, dict)}
         summary["would_link_runbooks"] = [
-            runbook.workflow_id for runbook in governance_runbooks if runbook.workflow_id not in existing_ids
+            runbook.workflow_id
+            for runbook in governance_runbooks
+            if runbook.workflow_id not in existing_ids
         ]
         summary["would_import_runbooks"] = [
             item.target_runbook
-            for item in result.workspace_runbooks
+            for item in materialize_result.workspace_runbooks
             if not (config.governance_root / item.target_runbook).is_file()
         ]
         if staged and not promote:
             summary["promote_hint"] = (
-                "v0.5.1: discover --staged writes inventory + discovery-candidates.json only. "
+                "v0.5.2: discover --staged writes inventory + discovery-candidates.json only. "
                 "Use discover --promote to apply registry changes."
             )
         return summary
@@ -556,7 +646,7 @@ def materialize_from_discovery(
         agent_id = str(workflow.get("agent", ""))
         group_jobs = [
             cron
-            for agent in result.agents
+            for agent in materialize_result.agents
             if agent.agent_id == agent_id
             for cron in agent.cron_jobs
             if workflow_id_for_cron(agent_id, cron.name) == workflow_id

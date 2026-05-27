@@ -5,7 +5,7 @@ Use this guide when you already have a governance repository with hand-authored 
 ## Prerequisites
 
 - OpenClaw installed with `openclaw.json` listing your agents
-- `openclaw-gov` v0.5.1+ installed ([README](../README.md))
+- `openclaw-gov` v0.5.2+ installed ([README](../README.md))
 - A backup or git commit of your governance repo before merging
 
 ## Recommended migration flow
@@ -121,13 +121,18 @@ Apply changes explicitly with **`discover --promote`** (or `discover --promote -
 - Skips hand-edited fields on `active` / `required` workflows (does not change `runtime_status` on protected rows)
 - Skips registry write when there is no semantic diff
 
+**Allowlist (v0.5.2+):** `--allowlist` limits promotion to the listed workflow IDs only. Registry rows, runbook stubs, and workspace runbook imports all respect the allowlist. `discovery-candidates.json` and `discovered-inventory.json` still reflect the full scan; stderr reports how many candidates were skipped by allowlist (including workspace runbook candidates).
+
 ```bash
 openclaw-gov discover --staged
 # review workflows/discovery-candidates.json
-openclaw-gov discover --promote
+# optional: promote only missing_active_cron rows
+openclaw-gov discover --promote --allowlist allowlist.json
 openclaw-gov regen --write
 openclaw-gov check
 ```
+
+If you used `--promote` without an allowlist on v0.5.1 and got unreferenced runbooks, delete the orphan files under `workflows/runbooks/` (or restore from git) before re-running `check`.
 
 Use plain `discover --write` only when you intentionally want the legacy merge behavior (writes registry immediately).
 
