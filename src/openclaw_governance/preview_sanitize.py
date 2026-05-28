@@ -19,9 +19,10 @@ _REDACTED = "<redacted>"
 
 def _flag_patterns(flag: str) -> tuple[re.Pattern[str], re.Pattern[str]]:
     name = re.escape(flag.lstrip("-"))
+    value = r'(?:"[^"]*"|\'[^\']*\'|[^\s"\']+)'
     return (
-        re.compile(rf"(--{name})=([^\s\"']+)", re.IGNORECASE),
-        re.compile(rf"(--{name})\s+([^\s\"']+)", re.IGNORECASE),
+        re.compile(rf"(--{name})=({value})", re.IGNORECASE),
+        re.compile(rf"(--{name})\s+({value})", re.IGNORECASE),
     )
 
 

@@ -187,7 +187,9 @@ def cmd_discover(args: argparse.Namespace) -> int:
         write_inventory=write_inventory,
         include_runtime_metrics=include_runtime_metrics,
     )
-    summary["read_only"] = not write_inventory and not write_registry
+    summary["read_only"] = (
+        not write_inventory and not write_registry and not include_runtime_metrics
+    )
 
     if args.json:
         payload = result.to_dict()
