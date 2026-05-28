@@ -576,7 +576,7 @@ def materialize_from_discovery(
     accountable = config.accountable_humans[0] if config.accountable_humans else "Operator"
     existing_raci = registry_before.get("raci_domains")
     raci_is_curated = isinstance(existing_raci, dict) and bool(existing_raci)
-    if not raci_is_curated:
+    if not (staged_merge and raci_is_curated):
         ensure_raci_domains(
             registry,
             agent_id_list,
