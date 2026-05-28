@@ -570,7 +570,7 @@ def materialize_from_discovery(
         existing_agents = []
     # Promote/staged: preserve curated agent fields; only fill gaps on new agents.
     registry["agents"] = merge_agents(
-        existing_agents, proposed_agents, refresh_discovery_fields=False
+        existing_agents, proposed_agents, refresh_discovery_fields=not staged_merge
     )
     agent_id_list = [entry["id"] for entry in registry["agents"]]
     accountable = config.accountable_humans[0] if config.accountable_humans else "Operator"
