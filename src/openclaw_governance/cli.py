@@ -149,6 +149,8 @@ def _print_discover_materialization(
                     f"would skip workspace runbook candidates (allowlist): {len(skipped_ws)}",
                     file=out,
                 )
+        if summary.get("allowlist_empty_warning"):
+            print(summary["allowlist_empty_warning"], file=out)
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
