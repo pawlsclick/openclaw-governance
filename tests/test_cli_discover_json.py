@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 from openclaw_governance.cli import main
-from openclaw_governance.discover import CronJob, DiscoveredAgent, DiscoveryResult
+from openclaw_governance.discover import CronJob, DiscoveredAgent, DiscoveryResult, cron_instance_group_id
 
 
 def _minimal_result() -> DiscoveryResult:
@@ -25,7 +25,7 @@ def _minimal_result() -> DiscoveryResult:
                         "0 9 * * *",
                         "hello",
                         "abc123",
-                        "main\0test\00 9 * * *",
+                        cron_instance_group_id("main", "test", "0 9 * * *"),
                     )
                 ],
             )

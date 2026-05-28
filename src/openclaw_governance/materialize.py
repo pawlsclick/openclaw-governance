@@ -16,6 +16,8 @@ from openclaw_governance.discover import (
     DiscoveredRunbook,
     DiscoveredWorkspaceRunbook,
     DiscoveryResult,
+    cron_instance_group_id,
+    format_schedule_label,
     scan_runbooks_on_disk,
     workflow_id_for_cron,
 )
@@ -56,11 +58,12 @@ def render_runbook_stub(
     agent_id: str,
     title: str,
     cron_job_ids: list[str],
-    schedule: str,
+    schedule: Any,
     message_preview: str,
     enabled: bool,
 ) -> str:
     runtime = "active" if enabled else "disabled"
+    schedule_label = format_schedule_label(schedule)
     lines = [
         f"# {title}",
         "",
@@ -77,7 +80,7 @@ def render_runbook_stub(
         "",
         "## Trigger",
         "",
-        f"- Schedule: `{schedule or 'unknown'}`",
+        f"- Schedule: `{schedule_label}`",
         f"- Runtime status when discovered: `{runtime}`",
         "",
         "## Payload preview",
@@ -230,7 +233,7 @@ def workflow_entry_from_cron_group(
         "title": primary.name.replace("_", " ").replace("-", " ").title(),
         "status": "discovered",
         "purpose": purpose,
-        "trigger": f"cron/openclaw_cron ({primary.schedule or 'schedule unknown'})",
+        "trigger": f"cron/openclaw_cron ({format_schedule_label(primary.schedule)})",
         "orchestration": "openclaw_cron",
         "inputs": [],
         "outputs": [],
@@ -252,7 +255,8 @@ def workflow_entry_from_cron_group(
             "message_preview": primary.message_preview,
             "cron_fingerprint": fingerprints[0] if len(fingerprints) == 1 else fingerprints,
             "cron_instances": cron_instances,
-            "instance_group_key": primary.instance_group_key,
+            "instance_group_id": primary.group_id
+            or cron_instance_group_id(agent_id, primary.name, primary.schedule),
         },
     }
 
@@ -404,8 +408,10 @@ def build_proposed_workflows(
     cron_groups: dict[str, list[Any]] = defaultdict(list)
     for agent in result.agents:
         for job in agent.cron_jobs:
-            group_key = job.instance_group_key or f"{agent.agent_id}\0{job.name}\0{job.schedule}"
-            cron_groups[group_key].append(job)
+            group_id = job.group_id or cron_instance_group_id(
+                agent.agent_id, job.name, job.schedule
+            )
+            cron_groups[group_id].append(job)
 
     for jobs in cron_groups.values():
         if not jobs:
@@ -437,30 +443,43 @@ def write_discovery_artifacts(
     config: GovernanceConfig,
     *,
     candidates: dict[str, Any] | None = None,
+    write_inventory: bool = False,
+    include_runtime_metrics: bool = False,
 ) -> dict[str, str]:
-    """Write discovered-inventory.json and optional discovery-candidates.json."""
+    """Write discovered-inventory.json and optional discovery artifacts."""
     paths: dict[str, str] = {}
     workflows_dir = config.governance_root / "workflows"
     workflows_dir.mkdir(parents=True, exist_ok=True)
 
-    known_agent_ids = {agent.agent_id for agent in result.agents}
-    inventory_result = DiscoveryResult(
-        generated_at=result.generated_at,
-        openclaw_home=result.openclaw_home,
-        openclaw_config_path=result.openclaw_config_path,
-        agents=result.agents,
-        runbooks=scan_runbooks_on_disk(config, known_agent_ids) if config.runbooks_dir.is_dir() else result.runbooks,
-        workspace_runbooks=result.workspace_runbooks,
-        warnings=result.warnings,
-        errors=result.errors,
-        agent_statuses=result.agent_statuses,
-    )
-    inventory_path = workflows_dir / "discovered-inventory.json"
-    inventory_path.write_text(
-        json.dumps(inventory_result.to_dict(), indent=2) + "\n",
-        encoding="utf-8",
-    )
-    paths["inventory_path"] = str(inventory_path)
+    if write_inventory:
+        known_agent_ids = {agent.agent_id for agent in result.agents}
+        inventory_result = DiscoveryResult(
+            generated_at=result.generated_at,
+            openclaw_home=result.openclaw_home,
+            openclaw_config_path=result.openclaw_config_path,
+            agents=result.agents,
+            runbooks=scan_runbooks_on_disk(config, known_agent_ids)
+            if config.runbooks_dir.is_dir()
+            else result.runbooks,
+            workspace_runbooks=result.workspace_runbooks,
+            warnings=result.warnings,
+            errors=result.errors,
+            agent_statuses=result.agent_statuses,
+        )
+        inventory_path = workflows_dir / "discovered-inventory.json"
+        inventory_path.write_text(
+            json.dumps(inventory_result.to_inventory_dict(), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        paths["inventory_path"] = str(inventory_path)
+
+    if include_runtime_metrics:
+        runtime_path = workflows_dir / "discovered-inventory-runtime.json"
+        runtime_path.write_text(
+            json.dumps(result.to_runtime_dict(), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        paths["runtime_path"] = str(runtime_path)
 
     if candidates is not None:
         candidates_path = workflows_dir / "discovery-candidates.json"
@@ -477,6 +496,8 @@ def materialize_from_discovery(
     staged: bool = False,
     promote: bool = False,
     allowlist: set[str] | None = None,
+    write_inventory: bool = False,
+    include_runtime_metrics: bool = False,
 ) -> dict[str, Any]:
     """Build or update registry + runbooks. Returns summary dict."""
     write_registry = write or promote
@@ -613,10 +634,14 @@ def materialize_from_discovery(
         workflow_id for workflow_id in created if workflow_id in runbook_workflow_ids
     ]
 
+    effective_write_inventory = write_inventory or staged or promote or write
+
     artifact_paths = write_discovery_artifacts(
         result,
         config,
         candidates=candidates_report,
+        write_inventory=effective_write_inventory,
+        include_runtime_metrics=include_runtime_metrics,
     )
     summary.update(artifact_paths)
 

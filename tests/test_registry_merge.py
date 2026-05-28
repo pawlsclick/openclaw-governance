@@ -53,7 +53,7 @@ def test_parse_cron_jobs_keeps_fan_out_instances() -> None:
     ]
     parsed = parse_cron_jobs("main", jobs)
     assert len(parsed) == 2
-    assert parsed[0].instance_group_key == parsed[1].instance_group_key
+    assert parsed[0].group_id == parsed[1].group_id
     assert parsed[0].fingerprint != parsed[1].fingerprint
 
 

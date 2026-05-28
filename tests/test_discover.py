@@ -3,7 +3,7 @@ from openclaw_governance.discover import (
     DiscoveredAgent,
     CronJob,
     cron_fingerprint,
-    cron_instance_group_key,
+    cron_instance_group_id,
     parse_cron_jobs,
     slugify,
     workflow_id_for_cron,
@@ -35,25 +35,27 @@ def test_parse_cron_jobs_dedupes_exact_repeats_only() -> None:
 
 
 def test_cron_instance_groups_in_discovery_dict() -> None:
+    schedule = {"expr": "0 9 * * *", "kind": "cron"}
+    group_id = cron_instance_group_id("main", "sync", schedule)
     job_a = CronJob(
         agent_id="main",
         job_id="j1",
         name="sync",
         enabled=True,
-        schedule='{"expr": "0 9 * * *", "kind": "cron"}',
+        schedule=schedule,
         message_preview="a",
         fingerprint="fp1",
-        instance_group_key=cron_instance_group_key("main", "sync", '{"expr": "0 9 * * *", "kind": "cron"}'),
+        group_id=group_id,
     )
     job_b = CronJob(
         agent_id="main",
         job_id="j2",
         name="sync",
         enabled=True,
-        schedule='{"expr": "0 9 * * *", "kind": "cron"}',
+        schedule=schedule,
         message_preview="b",
         fingerprint="fp2",
-        instance_group_key=job_a.instance_group_key,
+        group_id=group_id,
     )
     result = DiscoveryResult(
         generated_at="2026-01-01T00:00:00Z",
@@ -68,11 +70,11 @@ def test_cron_instance_groups_in_discovery_dict() -> None:
 
 
 def test_materialize_groups_cron_jobs_into_one_workflow(tmp_path) -> None:
-    schedule = '{"expr": "0 9 * * *", "kind": "cron"}'
-    group_key = cron_instance_group_key("main", "fan", schedule)
+    schedule = {"expr": "0 9 * * *", "kind": "cron"}
+    group_id = cron_instance_group_id("main", "fan", schedule)
     jobs = [
-        CronJob("main", "j1", "fan", True, schedule, "one", "fp1", group_key),
-        CronJob("main", "j2", "fan", True, schedule, "two", "fp2", group_key),
+        CronJob("main", "j1", "fan", True, schedule, "one", "fp1", group_id),
+        CronJob("main", "j2", "fan", True, schedule, "two", "fp2", group_id),
     ]
     result = DiscoveryResult(
         generated_at="2026-01-01T00:00:00Z",
