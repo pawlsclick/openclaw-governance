@@ -31,6 +31,7 @@ class GovernanceConfig:
     discovery_workspace_runbook_glob: str = "**/*runbook*.md"
     discovery_script_globs: list[str] = field(default_factory=lambda: ["scripts/**/*.py", "automation/**/*.py"])
     discovery_cron_timeout_seconds: int = 45
+    discovery_sensitive_preview_flags: list[str] = field(default_factory=list)
     require_readme_markers: bool = True
     finance_agent_owner_check: bool = False
 
@@ -127,6 +128,10 @@ def load_config(
         cron_timeout = DEFAULT_CRON_TIMEOUT_SECONDS
     cron_timeout = max(1, min(cron_timeout, MAX_CRON_TIMEOUT_SECONDS))
 
+    extra_sensitive_flags = discovery_cfg.get("sensitive_preview_flags")
+    if not isinstance(extra_sensitive_flags, list):
+        extra_sensitive_flags = []
+
     return GovernanceConfig(
         openclaw_home=home,
         governance_root=gov_root,
@@ -144,6 +149,7 @@ def load_config(
         ),
         discovery_script_globs=[str(item) for item in script_globs],
         discovery_cron_timeout_seconds=cron_timeout,
+        discovery_sensitive_preview_flags=[str(item) for item in extra_sensitive_flags],
         require_readme_markers=bool(data.get("require_readme_markers", True)),
         finance_agent_owner_check=bool(data.get("finance_agent_owner_check", False)),
     )

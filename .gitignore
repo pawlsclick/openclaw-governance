@@ -16,3 +16,4 @@ htmlcov/
 
 # Local governance output during dev (operators may git-init their own root)
 discovered-inventory.json
+discovered-inventory-runtime.json

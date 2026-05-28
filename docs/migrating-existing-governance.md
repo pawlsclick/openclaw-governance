@@ -108,11 +108,15 @@ openclaw-gov check
 
 ## First discover after adoption
 
-Prefer **`discover --staged`** on brownfield systems (v0.5.1+):
+Plain `discover` is read-only (console summary only). Prefer **`discover --staged`** on brownfield systems (v0.5.1+):
 
-- Writes `workflows/discovered-inventory.json` and `workflows/discovery-candidates.json`
+- Writes stable `workflows/discovered-inventory.json` and `workflows/discovery-candidates.json`
 - Does **not** mutate `registry.yaml` (safe for CI: `git diff workflows/registry.yaml` should be empty)
 - Classifies findings (`missing_active_cron`, `workspace_runbook_candidate`, `protected_existing_changed`, etc.)
+
+Use **`discover --inventory`** when you only need to refresh the committed inventory snapshot (no candidates, no registry).
+
+Optional **`--include-runtime-metrics`** writes per-run agent timings to `workflows/discovered-inventory-runtime.json` (gitignored in template repos; not for committed governance inventory).
 
 Apply changes explicitly with **`discover --promote`** (or `discover --promote --allowlist PATH`):
 

@@ -82,6 +82,8 @@ def _print_discover_materialization(
         print(summary["promote_hint"], file=out)
     if summary.get("inventory_path"):
         print(f"inventory: {summary.get('inventory_path')}", file=out)
+    if summary.get("runtime_path"):
+        print(f"runtime metrics: {summary.get('runtime_path')}", file=out)
     if summary.get("candidates_path"):
         print(f"candidates: {summary.get('candidates_path')}", file=out)
         report = summary.get("candidates") or {}
@@ -123,11 +125,20 @@ def _print_discover_materialization(
             print(summary["allowlist_empty_warning"], file=out)
     else:
         print("", file=out)
-        print(
-            "Registry not written. Use --promote to apply staged merge rules, "
-            "or --write for legacy immediate registry + runbook writes.",
-            file=out,
-        )
+        if summary.get("read_only"):
+            print(
+                "Read-only discovery: no governance files written. "
+                "Use --inventory to write workflows/discovered-inventory.json, "
+                "--staged for inventory + discovery-candidates.json, "
+                "or --promote / --write to update registry/runbooks.",
+                file=out,
+            )
+        else:
+            print(
+                "Registry not written. Use --promote to apply staged merge rules, "
+                "or --write for legacy immediate registry + runbook writes.",
+                file=out,
+            )
         in_gov = summary.get("runbooks_in_governance")
         in_ws = summary.get("runbooks_in_workspaces")
         if in_gov is not None:
@@ -162,6 +173,9 @@ def cmd_discover(args: argparse.Namespace) -> int:
     if allowlist_path:
         allowlist = _load_allowlist(Path(allowlist_path))
 
+    include_runtime_metrics = args.include_runtime_metrics
+    write_registry = args.write or args.promote
+
     summary = materialize_from_discovery(
         result,
         config,
@@ -169,9 +183,9 @@ def cmd_discover(args: argparse.Namespace) -> int:
         staged=args.staged,
         promote=args.promote,
         allowlist=allowlist,
+        write_inventory=args.inventory,
+        include_runtime_metrics=include_runtime_metrics,
     )
-
-    write_registry = args.write or args.promote
 
     if args.json:
         payload = result.to_dict()
@@ -344,17 +358,30 @@ def build_parser() -> argparse.ArgumentParser:
     discover_parser = sub.add_parser(
         "discover",
         parents=[common],
-        help="Discover agents, crons, repos (dry-run by default)",
+        help="Discover agents, crons, repos (read-only console summary by default)",
+    )
+    discover_parser.add_argument(
+        "--inventory",
+        action="store_true",
+        help="Write workflows/discovered-inventory.json (stable snapshot, no registry changes)",
+    )
+    discover_parser.add_argument(
+        "--include-runtime-metrics",
+        action="store_true",
+        help=(
+            "Also write workflows/discovered-inventory-runtime.json with per-run timings "
+            "(use with --inventory, --staged, --promote, or --write)"
+        ),
     )
     discover_parser.add_argument(
         "--write",
         action="store_true",
-        help="Legacy: write registry + runbook stubs (use with --staged for protected merge rules)",
+        help="Legacy: write registry + runbook stubs (implies --inventory)",
     )
     discover_parser.add_argument(
         "--staged",
         action="store_true",
-        help="Write discovery-candidates.json; do not mutate registry (CI-safe review)",
+        help="Write inventory + discovery-candidates.json; do not mutate registry (CI-safe review)",
     )
     discover_parser.add_argument(
         "--promote",

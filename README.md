@@ -86,8 +86,11 @@ openclaw-gov adopt --from ~/Projects/openclaw-workspace-governance
 # 2. Set your GitHub remote and which agents get governance stanzas
 #    Edit ~/.openclaw/governance/governance.config.yaml
 
-# 3. Discover live state (dry-run; writes inventory snapshot only)
+# 3. Discover live state (read-only console summary; no files written)
 openclaw-gov discover --root ~/.openclaw/governance
+
+# 3b. Refresh committed inventory snapshot (stable JSON; no registry changes)
+openclaw-gov discover --inventory --root ~/.openclaw/governance
 
 # 4. Materialize registry + runbook stubs (also scaffolds README.md if missing)
 openclaw-gov discover --write --root ~/.openclaw/governance
@@ -127,9 +130,11 @@ openclaw-gov discover --write --root .
 | `openclaw-gov init --adopt PATH` | Adopt from an existing governance root |
 | `openclaw-gov adopt --from PATH` | Adopt source governance root (source authoritative by default) |
 | `openclaw-gov adopt --keep-target-config` | Adopt while keeping existing target `governance.config.yaml` on conflict |
-| `openclaw-gov discover` | Inventory agents/crons/repos (dry-run) |
+| `openclaw-gov discover` | Read-only discovery summary (console only; no governance files written) |
+| `openclaw-gov discover --inventory` | Write stable `workflows/discovered-inventory.json` (no registry changes) |
+| `openclaw-gov discover --include-runtime-metrics` | Also write `workflows/discovered-inventory-runtime.json` (timings; gitignored locally) |
 | `openclaw-gov discover --json` | Machine-readable inventory JSON on stdout (human report on stderr) |
-| `openclaw-gov discover --write` | Write `registry.yaml` + runbook stubs |
+| `openclaw-gov discover --write` | Write registry + runbook stubs (implies `--inventory`) |
 | `openclaw-gov discover --staged` | Write inventory + `discovery-candidates.json` (no registry mutation) |
 | `openclaw-gov discover --promote` | Apply staged merge and write registry when changed |
 | `openclaw-gov discover --promote --allowlist PATH` | Promote only listed workflow ids; agents and curated RACI unchanged |
@@ -175,7 +180,7 @@ Requires a git repository at the governance root with `remote.url` configured. P
 - `accountable_humans` — names allowed in RACI accountable fields
 - `agents.broadcast_excluded` — cron-only agents omitted from broadcast RACI
 - `agents.inject_included` — allowlist of agent ids that receive the governance stanza in `AGENTS.md`. **Omit the key** to inject all agents; **`[]`** injects none until you pass `--agent`
-- `discovery.*` — script globs, git repo scan toggles, `cron_timeout_seconds` (default 45, max 120)
+- **Discovery** (`discovery.*`) — script globs, git repo scan toggles, `cron_timeout_seconds` (default 45, max 120), optional `sensitive_preview_flags` (extra CLI flags redacted in `message_preview`)
 
 Root precedence: `--root` > `OPENCLAW_GOVERNANCE_ROOT` > nearest `governance.config.yaml` > `~/.openclaw/governance`.
 
@@ -206,12 +211,9 @@ agents:
 
 ## What discover creates
 
-`openclaw-gov discover` inventories:
+`openclaw-gov discover` scans live OpenClaw state and prints a console summary. It does **not** write governance files unless you pass `--inventory`, `--staged`, `--promote`, or `--write`.
 
-- **Agents** from `openclaw.json` (workspaces, git remotes, scripts)
-- **Cron jobs** via `openclaw cron list --json`
-- **Governance runbooks** already under `workflows/runbooks/*.md` in the governance root
-- **Workspace runbooks** matching `*runbook*.md` under each agent workspace (identify only; no file changes)
+`openclaw-gov discover --inventory` writes a **stable** inventory snapshot at `workflows/discovered-inventory.json` (no `generated_at` or per-run agent timings; cron schedules as JSON objects; `group_id` instead of NUL-delimited keys; sensitive CLI flag values redacted in previews). Optional `--include-runtime-metrics` writes volatile timings to `workflows/discovered-inventory-runtime.json`.
 
 `openclaw-gov discover --write` also:
 
@@ -225,7 +227,9 @@ For each OpenClaw cron job:
 
 - Registry entry: `status: discovered`, `runtime_status` from enabled flag
 - Runbook stub: `workflows/runbooks/<agent>.cron.<name>.md` (skipped if file already exists)
-- Inventory snapshot: `workflows/discovered-inventory.json`
+- Inventory snapshot: `workflows/discovered-inventory.json` (when using `--inventory`, `--staged`, `--promote`, or `--write`)
+
+Discovery scans **agents** from `openclaw.json`, **cron jobs** via `openclaw cron list --json`, **governance runbooks** under `workflows/runbooks/*.md`, and **workspace runbooks** matching `*runbook*.md` (identify only unless promoted/imported).
 
 For each runbook already on disk (without a matching cron-derived workflow):
 

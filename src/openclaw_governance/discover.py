@@ -18,12 +18,15 @@ from openclaw_governance.runbook_import import (
     scan_workspace_runbooks,
     workflow_id_from_workspace_runbook,
 )
+from openclaw_governance.preview_sanitize import sanitize_message_preview
 from openclaw_governance.runbook_utils import (
     agent_id_from_workflow_id,
     parse_runbook_title,
     slugify,
     workflow_id_from_path,
 )
+
+INVENTORY_SCHEMA_VERSION = 2
 
 
 @dataclass
@@ -32,10 +35,10 @@ class CronJob:
     job_id: str
     name: str
     enabled: bool
-    schedule: str
+    schedule: Any
     message_preview: str
     fingerprint: str = ""
-    instance_group_key: str = ""
+    group_id: str = ""
 
 
 @dataclass
@@ -96,23 +99,23 @@ class DiscoveryResult:
         grouped: dict[str, list[CronJob]] = defaultdict(list)
         for agent in self.agents:
             for job in agent.cron_jobs:
-                key = job.instance_group_key or cron_instance_group_key(
+                group_id = job.group_id or cron_instance_group_id(
                     agent.agent_id, job.name, job.schedule
                 )
-                grouped[key].append(job)
+                grouped[group_id].append(job)
 
         result: list[dict[str, Any]] = []
-        for group_key in sorted(grouped):
-            jobs = grouped[group_key]
+        for group_id in sorted(grouped):
+            jobs = grouped[group_id]
             first = jobs[0]
             fingerprints = sorted({job.fingerprint for job in jobs if job.fingerprint})
             kind = "fan_out" if len(jobs) > 1 else "single"
             result.append(
                 {
-                    "group_key": group_key,
+                    "group_id": group_id,
                     "agent_id": first.agent_id,
                     "name": first.name,
-                    "schedule": first.schedule,
+                    "schedule": schedule_for_storage(first.schedule),
                     "job_count": len(jobs),
                     "fingerprints": fingerprints,
                     "job_ids": [job.job_id for job in jobs],
@@ -121,25 +124,41 @@ class DiscoveryResult:
             )
         return result
 
-    def to_dict(self) -> dict[str, Any]:
+    def _agents_inventory_payload(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "agent_id": agent.agent_id,
+                "name": agent.name,
+                "role": agent.role,
+                "workspace": agent.workspace,
+                "cron_jobs": [
+                    {
+                        "job_id": job.job_id,
+                        "name": job.name,
+                        "enabled": job.enabled,
+                        "schedule": schedule_for_storage(job.schedule),
+                        "message_preview": job.message_preview,
+                        "fingerprint": job.fingerprint,
+                        "group_id": job.group_id
+                        or cron_instance_group_id(agent.agent_id, job.name, job.schedule),
+                    }
+                    for job in agent.cron_jobs
+                ],
+                "git_repos": agent.git_repos,
+                "script_paths": agent.script_paths,
+            }
+            for agent in self.agents
+        ]
+
+    def to_inventory_dict(self) -> dict[str, Any]:
+        """Stable governance inventory (no per-run timestamps or agent timings)."""
         return {
-            "generated_at": self.generated_at,
+            "inventory_schema_version": INVENTORY_SCHEMA_VERSION,
             "openclaw_home": self.openclaw_home,
             "openclaw_config_path": self.openclaw_config_path,
             "warnings": self.warnings,
             "errors": self.errors,
             "cron_instance_groups": self.cron_instance_groups(),
-            "agent_statuses": [
-                {
-                    "agent_id": status.agent_id,
-                    "ok": status.ok,
-                    "cron_count": status.cron_count,
-                    "error": status.error,
-                    "phase": status.phase,
-                    "duration_ms": status.duration_ms,
-                }
-                for status in self.agent_statuses
-            ],
             "runbooks": [
                 {
                     "workflow_id": runbook.workflow_id,
@@ -162,30 +181,31 @@ class DiscoveryResult:
                 }
                 for item in self.workspace_runbooks
             ],
-            "agents": [
+            "agents": self._agents_inventory_payload(),
+        }
+
+    def to_runtime_dict(self) -> dict[str, Any]:
+        """Volatile per-run diagnostics (not committed with stable inventory)."""
+        return {
+            "generated_at": self.generated_at,
+            "agent_statuses": [
                 {
-                    "agent_id": agent.agent_id,
-                    "name": agent.name,
-                    "role": agent.role,
-                    "workspace": agent.workspace,
-                    "cron_jobs": [
-                        {
-                            "job_id": job.job_id,
-                            "name": job.name,
-                            "enabled": job.enabled,
-                            "schedule": job.schedule,
-                            "message_preview": job.message_preview,
-                            "fingerprint": job.fingerprint,
-                            "instance_group_key": job.instance_group_key,
-                        }
-                        for job in agent.cron_jobs
-                    ],
-                    "git_repos": agent.git_repos,
-                    "script_paths": agent.script_paths,
+                    "agent_id": status.agent_id,
+                    "ok": status.ok,
+                    "cron_count": status.cron_count,
+                    "error": status.error,
+                    "phase": status.phase,
+                    "duration_ms": status.duration_ms,
                 }
-                for agent in self.agents
+                for status in self.agent_statuses
             ],
         }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Full discovery payload for --json stdout (inventory + runtime)."""
+        payload = self.to_inventory_dict()
+        payload.update(self.to_runtime_dict())
+        return payload
 
 
 def canonical_json(value: Any) -> str:
@@ -205,11 +225,48 @@ def normalize_schedule(sched: Any) -> Any:
         return json.loads(canonical_json(sched))
     if sched is None:
         return ""
+    if isinstance(sched, str):
+        stripped = sched.strip()
+        if stripped.startswith("{"):
+            try:
+                return json.loads(stripped)
+            except json.JSONDecodeError:
+                pass
     return str(sched)
 
 
-def cron_instance_group_key(agent_id: str, name: str, schedule: str) -> str:
-    return f"{agent_id}\0{name}\0{schedule}"
+def schedule_for_storage(sched: Any) -> Any:
+    """Normalize schedule for JSON inventory output (object when structured)."""
+    return normalize_schedule(sched)
+
+
+def format_schedule_label(schedule: Any) -> str:
+    normalized = schedule_for_storage(schedule)
+    if isinstance(normalized, dict):
+        expr = normalized.get("expr") or normalized.get("at") or "schedule unknown"
+        tz = normalized.get("tz")
+        if tz:
+            return f"{expr} ({tz})"
+        return str(expr)
+    return str(normalized) if normalized else "schedule unknown"
+
+
+def cron_instance_group_spec(agent_id: str, name: str, schedule: Any) -> dict[str, Any]:
+    return {
+        "agent_id": agent_id,
+        "name": name,
+        "schedule": schedule_for_storage(schedule),
+    }
+
+
+def cron_instance_group_id(agent_id: str, name: str, schedule: Any) -> str:
+    digest = hashlib.sha256(canonical_json(cron_instance_group_spec(agent_id, name, schedule)).encode())
+    return digest.hexdigest()[:16]
+
+
+def cron_instance_group_key(agent_id: str, name: str, schedule: Any) -> str:
+    """Deprecated: use cron_instance_group_id(). Kept for tests importing the old name."""
+    return cron_instance_group_id(agent_id, name, schedule)
 
 
 def cron_identity_dict(agent_id: str, job: dict[str, Any]) -> dict[str, Any]:
@@ -401,6 +458,7 @@ def parse_cron_jobs(
     jobs: list[dict[str, Any]],
     *,
     warnings: list[str] | None = None,
+    sensitive_preview_flags: list[str] | None = None,
 ) -> list[CronJob]:
     parsed: list[CronJob] = []
     seen_fingerprints: dict[str, tuple[str, str]] = {}
@@ -410,19 +468,14 @@ def parse_cron_jobs(
         job_id = str(job.get("id", ""))
         name = str(job.get("name") or job.get("id") or "unnamed")
         enabled = bool(job.get("enabled", True))
-        sched = job.get("schedule")
-        if isinstance(sched, dict):
-            schedule = json.dumps(sched, sort_keys=True)
-        elif sched is not None:
-            schedule = str(sched)
-        else:
-            schedule = ""
+        schedule = schedule_for_storage(job.get("schedule"))
 
         payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
         message = payload.get("message", "")
-        preview = str(message).replace("\n", " ")[:160]
+        raw_preview = str(message).replace("\n", " ")[:160]
+        preview = sanitize_message_preview(raw_preview, sensitive_preview_flags)
         fingerprint = cron_fingerprint(agent_id, job)
-        group_key = cron_instance_group_key(agent_id, name, schedule)
+        group_id = cron_instance_group_id(agent_id, name, schedule)
 
         if fingerprint in seen_fingerprints:
             prior_id, prior_name = seen_fingerprints[fingerprint]
@@ -442,7 +495,7 @@ def parse_cron_jobs(
                 schedule=schedule,
                 message_preview=preview,
                 fingerprint=fingerprint,
-                instance_group_key=group_key,
+                group_id=group_id,
             )
         )
     return parsed
@@ -518,7 +571,12 @@ def discover(config: GovernanceConfig) -> DiscoveryResult:
                 )
             )
         else:
-            agent.cron_jobs = parse_cron_jobs(agent.agent_id, jobs_raw, warnings=warnings)
+            agent.cron_jobs = parse_cron_jobs(
+                agent.agent_id,
+                jobs_raw,
+                warnings=warnings,
+                sensitive_preview_flags=config.discovery_sensitive_preview_flags,
+            )
             agent_statuses.append(
                 AgentDiscoveryStatus(
                     agent_id=agent.agent_id,
