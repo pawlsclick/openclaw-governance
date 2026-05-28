@@ -511,8 +511,9 @@ def materialize_from_discovery(
     registry = json.loads(json.dumps(registry_before, default=str))
 
     full_proposed: list[dict[str, Any]] | None = None
+    full_import_side: dict[str, Any] | None = None
     if allowlist is not None and report_candidates:
-        full_proposed, _, _ = build_proposed_workflows(
+        full_proposed, full_import_side, _ = build_proposed_workflows(
             result,
             config,
             registry,
@@ -554,7 +555,11 @@ def materialize_from_discovery(
             registry,
             candidates_for_report,
             config,
-            skipped_runbook_proposals=import_side.get("skipped_runbook_proposals", []),
+            skipped_runbook_proposals=(
+                full_import_side.get("skipped_runbook_proposals", [])
+                if full_import_side is not None
+                else import_side.get("skipped_runbook_proposals", [])
+            ),
         )
         summary["candidates"] = candidates_report
 
