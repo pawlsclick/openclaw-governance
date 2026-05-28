@@ -26,7 +26,11 @@ from openclaw_governance.candidates import (
     filter_proposed_by_allowlist,
 )
 from openclaw_governance.registry_diff import registry_semantic_diff
-from openclaw_governance.registry_merge import merge_agents, merge_workflows
+from openclaw_governance.registry_merge import (
+    PROTECTED_WORKFLOW_STATUSES,
+    merge_agents,
+    merge_workflows,
+)
 from openclaw_governance.registry_common import (
     UniqueKeyLoader,
     construct_mapping_without_duplicate_keys,
@@ -595,8 +599,11 @@ def materialize_from_discovery(
     )
     prefix_rules = effective_domain_prefix_rules(tuple(config.domain_prefix_rules), registry)
     for workflow in merged:
-        if isinstance(workflow, dict):
-            apply_inferred_raci_domain(workflow, registry, prefix_rules)
+        if not isinstance(workflow, dict):
+            continue
+        if staged_merge and str(workflow.get("status", "")) in PROTECTED_WORKFLOW_STATUSES:
+            continue
+        apply_inferred_raci_domain(workflow, registry, prefix_rules)
     registry["workflows"] = merged
     summary["created_workflows"] = created
     summary["updated_workflows"] = updated
@@ -648,9 +655,31 @@ def materialize_from_discovery(
     config.runbooks_dir.mkdir(parents=True, exist_ok=True)
     registry_path.parent.mkdir(parents=True, exist_ok=True)
 
+    existing_by_id = {
+        str(item.get("id")): item
+        for item in (registry_before.get("workflows") or [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    created_set = set(created)
+    merged_by_id = {
+        str(item.get("id")): item
+        for item in registry.get("workflows", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+
     for workflow in proposed_workflows:
         workflow_id = str(workflow["id"])
-        runbook_rel = runbook_path_for(workflow_id)
+        if staged_merge:
+            if workflow_id in existing_by_id:
+                existing_runbook = str(existing_by_id[workflow_id].get("runbook") or "")
+                if existing_runbook:
+                    summary["skipped_runbooks"].append(existing_runbook)
+                continue
+            if workflow_id not in created_set:
+                continue
+
+        merged_wf = merged_by_id.get(workflow_id, workflow)
+        runbook_rel = str(merged_wf.get("runbook") or runbook_path_for(workflow_id))
         runbook_file = config.governance_root / runbook_rel
         if runbook_file.is_file():
             summary["skipped_runbooks"].append(runbook_rel)

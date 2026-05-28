@@ -120,11 +120,12 @@ Apply changes explicitly with **`discover --promote`** (or `discover --promote -
 - Refreshes discovery-owned fields on existing `discovered` rows only
 - Skips hand-edited fields on `active` / `required` workflows (does not change `runtime_status` on protected rows)
 - Does **not** overwrite curated `agents` or `raci_domains` rows (fills missing agent fields only; generated RACI defaults are init-only when `raci_domains` is empty)
+- Does **not** create runbook stubs for workflow IDs already present in `registry.yaml` (existing `runbook:` parent paths are preserved)
 - Skips registry write when there is no semantic diff
 
 **Allowlist (v0.5.2+):** `--allowlist` limits promotion to the listed workflow IDs only. Registry rows, runbook stubs, and workspace runbook imports all respect the allowlist. Curated agents and RACI domains are never rewritten by allowlist-scoped promote. `discovery-candidates.json` and `discovered-inventory.json` still reflect the full scan; stderr reports how many candidates were skipped by allowlist (including workspace runbook candidates).
 
-**Brownfield until v0.5.3+ is deployed:** prefer `discover --staged`, review `protected_existing_changed` as a drift signal only, and promote allowlisted rows manually. Avoid full `--promote` against canonical governance until the preserve-on-promote fix is installed.
+**Brownfield until v0.5.4+ is deployed:** prefer `discover --staged`, review `protected_existing_changed` as a drift signal only, and promote allowlisted rows manually. Avoid full `--promote` against canonical governance until the preserve-on-promote fix is installed.
 
 ```bash
 openclaw-gov discover --staged
