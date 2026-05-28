@@ -44,7 +44,6 @@ def _write_governance_config(gov: Path, config: GovernanceConfig) -> None:
 
 
 def _discovery_with_cron_and_workspace(tmp_path: Path) -> DiscoveryResult:
-    cron_ids = [f"main.cron.job_{index}" for index in range(15)]
     agents = [
         DiscoveredAgent(
             agent_id="main",
