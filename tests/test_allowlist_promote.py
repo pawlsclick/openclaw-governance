@@ -21,15 +21,7 @@ def _empty_registry() -> dict:
         "generated_at": "2025-01-01T00:00:00Z",
         "version": 0.1,
         "agents": [{"id": "main", "name": "Main", "role": "Agent", "workspace": "/w"}],
-        "raci_domains": {
-            "platform": {
-                "title": "Platform",
-                "responsible": "main",
-                "accountable": "Operator",
-                "consulted": [],
-                "informed": ["main"],
-            }
-        },
+        "raci_domains": {},
         "workflows": [],
     }
 
