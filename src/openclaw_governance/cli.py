@@ -110,6 +110,17 @@ def _print_discover_materialization(
         skipped_import = summary.get("skipped_imported_runbooks") or []
         if skipped_import:
             print(f"skipped workspace imports (already exist): {len(skipped_import)}", file=out)
+        skipped_allowlist = summary.get("skipped_by_allowlist") or []
+        if skipped_allowlist:
+            skipped_ws = summary.get("skipped_workspace_runbook_candidates") or []
+            print(f"skipped by allowlist: {len(skipped_allowlist)}", file=out)
+            if skipped_ws:
+                print(
+                    f"skipped workspace runbook candidates (allowlist): {len(skipped_ws)}",
+                    file=out,
+                )
+        if summary.get("allowlist_empty_warning"):
+            print(summary["allowlist_empty_warning"], file=out)
     else:
         print("", file=out)
         print(
@@ -129,6 +140,17 @@ def _print_discover_materialization(
         would_import = summary.get("would_import_runbooks") or []
         if would_import:
             print(f"would import workspace runbooks: {len(would_import)}", file=out)
+        skipped_allowlist = summary.get("skipped_by_allowlist") or []
+        if skipped_allowlist:
+            skipped_ws = summary.get("skipped_workspace_runbook_candidates") or []
+            print(f"would skip by allowlist: {len(skipped_allowlist)}", file=out)
+            if skipped_ws:
+                print(
+                    f"would skip workspace runbook candidates (allowlist): {len(skipped_ws)}",
+                    file=out,
+                )
+        if summary.get("allowlist_empty_warning"):
+            print(summary["allowlist_empty_warning"], file=out)
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
@@ -343,8 +365,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--allowlist",
         metavar="PATH",
         help=(
-            "JSON workflow id allowlist for --promote (array or {workflow_ids: [...]}). "
-            "Filters proposed workflow rows only; agents and raci_domains still merge."
+            "JSON workflow id allowlist (array or {workflow_ids: [...]}). "
+            "With --promote or --write, only allowlisted workflows are promoted: registry rows, "
+            "runbook stubs, and workspace runbook imports. Agents and raci_domains still merge. "
+            "Full discovery stays in inventory/candidates; skipped ids are reported."
         ),
     )
     discover_parser.add_argument("--json", action="store_true", help="Print inventory JSON to stdout")
