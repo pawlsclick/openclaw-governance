@@ -132,7 +132,7 @@ openclaw-gov discover --write --root .
 | `openclaw-gov discover --write` | Write `registry.yaml` + runbook stubs |
 | `openclaw-gov discover --staged` | Write inventory + `discovery-candidates.json` (no registry mutation) |
 | `openclaw-gov discover --promote` | Apply staged merge and write registry when changed |
-| `openclaw-gov discover --promote --allowlist PATH` | Promote only listed workflow ids (agents/RACI still merge) |
+| `openclaw-gov discover --promote --allowlist PATH` | Promote only listed workflow ids; agents and curated RACI unchanged |
 | `openclaw-gov check` | Validate registry ↔ runbooks ↔ README |
 | `openclaw-gov regen --write` | Refresh README summary + RACI markers |
 | `openclaw-gov regen --check` | CI drift check (use with `openclaw-gov check`) |

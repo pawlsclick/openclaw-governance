@@ -76,6 +76,23 @@ def test_materialize_creates_per_agent_ops_domain_for_any_agent(tmp_path: Path) 
     assert workflow["raci_domain"] == "billing_bot_ops"
 
 
+def test_ensure_raci_domains_init_only_skips_when_populated() -> None:
+    registry = {
+        "raci_domains": {
+            "main_ops": {
+                "title": "Curated",
+                "responsible": "main",
+                "accountable": "Woodrow",
+                "consulted": [],
+                "informed": [],
+            }
+        }
+    }
+    ensure_raci_domains(registry, ["main", "research"], accountable="Operator", init_only=True)
+    assert "research_ops" not in registry["raci_domains"]
+    assert registry["raci_domains"]["main_ops"]["title"] == "Curated"
+
+
 def test_ensure_raci_domains_merges_without_overwriting() -> None:
     registry = {
         "raci_domains": {

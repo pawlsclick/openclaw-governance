@@ -568,17 +568,21 @@ def materialize_from_discovery(
     existing_agents = registry.get("agents")
     if not isinstance(existing_agents, list):
         existing_agents = []
+    # Promote/staged: preserve curated agent fields; only fill gaps on new agents.
     registry["agents"] = merge_agents(
-        existing_agents, proposed_agents, refresh_discovery_fields=True
+        existing_agents, proposed_agents, refresh_discovery_fields=False
     )
     agent_id_list = [entry["id"] for entry in registry["agents"]]
     accountable = config.accountable_humans[0] if config.accountable_humans else "Operator"
-    ensure_raci_domains(
-        registry,
-        agent_id_list,
-        accountable=accountable,
-        config_excluded=config.raci_broadcast_excluded,
-    )
+    existing_raci = registry_before.get("raci_domains")
+    raci_is_curated = isinstance(existing_raci, dict) and bool(existing_raci)
+    if not raci_is_curated:
+        ensure_raci_domains(
+            registry,
+            agent_id_list,
+            accountable=accountable,
+            config_excluded=config.raci_broadcast_excluded,
+        )
 
     existing_workflows = registry.get("workflows")
     if not isinstance(existing_workflows, list):

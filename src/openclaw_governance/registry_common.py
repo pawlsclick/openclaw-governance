@@ -226,8 +226,14 @@ def ensure_raci_domains(
     *,
     accountable: str = "Operator",
     config_excluded: list[str] | None = None,
+    init_only: bool = False,
 ) -> None:
     """Merge default RACI domains into registry without overwriting operator edits."""
+    current = registry.get("raci_domains")
+    if not isinstance(current, dict):
+        current = {}
+    if init_only and current:
+        return
     broadcast = agents_for_raci_broadcast(registry, config_excluded)
     if not broadcast and agent_ids_list:
         broadcast = [
@@ -237,9 +243,6 @@ def ensure_raci_domains(
             and agent_id not in set(config_excluded or [])
         ]
     defaults = default_raci_domains(broadcast, accountable=accountable)
-    current = registry.get("raci_domains")
-    if not isinstance(current, dict):
-        current = {}
     for key, value in defaults.items():
         if key not in current:
             current[key] = value
