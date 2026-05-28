@@ -81,7 +81,7 @@ def test_merge_workflows_unions_cron_job_ids() -> None:
     assert sorted(row["cron_job_ids"]) == ["job-1", "job-2"]
 
 
-def test_merge_workflows_staged_skips_active() -> None:
+def test_merge_workflows_staged_skips_active_without_cron_union() -> None:
     existing = [
         {
             "id": "main.cron.daily",
@@ -89,6 +89,7 @@ def test_merge_workflows_staged_skips_active() -> None:
             "title": "Hand-authored title",
             "purpose": "Do not overwrite",
             "runtime_status": "active",
+            "cron_job_ids": ["job-1"],
         }
     ]
     proposed = [
@@ -98,14 +99,17 @@ def test_merge_workflows_staged_skips_active() -> None:
             "title": "Discovered title",
             "purpose": "Would overwrite",
             "runtime_status": "disabled",
+            "cron_job_ids": ["job-2"],
         }
     ]
     merged, created, updated, skipped = merge_workflows(existing, proposed, staged=True)
     assert created == []
+    assert updated == []
     assert skipped == ["main.cron.daily"]
     row = merged[0]
     assert row["title"] == "Hand-authored title"
     assert row["runtime_status"] == "active"
+    assert row["cron_job_ids"] == ["job-1"]
 
 
 def test_merge_agents_preserves_notes() -> None:

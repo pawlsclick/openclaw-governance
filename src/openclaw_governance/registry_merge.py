@@ -149,7 +149,6 @@ def merge_workflows(
             current = by_id[workflow_id]
             status = str(current.get("status", "discovered"))
             if staged and status in PROTECTED_WORKFLOW_STATUSES:
-                _union_cron_job_ids(current, workflow)
                 skipped_protected.append(workflow_id)
                 continue
 
