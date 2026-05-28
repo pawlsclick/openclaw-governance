@@ -448,6 +448,9 @@ def write_discovery_artifacts(
 ) -> dict[str, str]:
     """Write discovered-inventory.json and optional discovery artifacts."""
     paths: dict[str, str] = {}
+    if not write_inventory and not include_runtime_metrics and candidates is None:
+        return paths
+
     workflows_dir = config.governance_root / "workflows"
     workflows_dir.mkdir(parents=True, exist_ok=True)
 
@@ -644,6 +647,12 @@ def materialize_from_discovery(
         include_runtime_metrics=include_runtime_metrics,
     )
     summary.update(artifact_paths)
+    summary["read_only"] = (
+        not effective_write_inventory
+        and not include_runtime_metrics
+        and candidates_report is None
+        and not write_registry
+    )
 
     diff = registry_semantic_diff(registry_before, registry)
     summary["registry_diff"] = diff

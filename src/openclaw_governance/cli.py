@@ -173,7 +173,6 @@ def cmd_discover(args: argparse.Namespace) -> int:
     if allowlist_path:
         allowlist = _load_allowlist(Path(allowlist_path))
 
-    write_inventory = args.inventory or args.staged or args.promote or args.write
     include_runtime_metrics = args.include_runtime_metrics
     write_registry = args.write or args.promote
 
@@ -184,11 +183,8 @@ def cmd_discover(args: argparse.Namespace) -> int:
         staged=args.staged,
         promote=args.promote,
         allowlist=allowlist,
-        write_inventory=write_inventory,
+        write_inventory=args.inventory,
         include_runtime_metrics=include_runtime_metrics,
-    )
-    summary["read_only"] = (
-        not write_inventory and not write_registry and not include_runtime_metrics
     )
 
     if args.json:
