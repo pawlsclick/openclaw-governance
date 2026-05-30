@@ -37,15 +37,23 @@ def write_capability_artifacts(
     return paths
 
 
-def load_skills_artifact(config: GovernanceConfig) -> dict[str, Any] | None:
-    path = config.governance_root / "workflows" / "discovered-skills.json"
+def _load_json_object_artifact(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+def load_skills_artifact(config: GovernanceConfig) -> dict[str, Any] | None:
+    path = config.governance_root / "workflows" / "discovered-skills.json"
+    return _load_json_object_artifact(path)
 
 
 def load_plugins_artifact(config: GovernanceConfig) -> dict[str, Any] | None:
     path = config.governance_root / "workflows" / "discovered-plugins.json"
-    if not path.is_file():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _load_json_object_artifact(path)

@@ -6,8 +6,11 @@ from typing import Any
 
 from openclaw_governance.capability_governance import (
     DEFAULT_CHECK_FAIL_ON,
+    apply_plugin_governance_statuses,
+    apply_skill_governance_statuses,
     plugin_is_material,
     skill_is_material,
+    summarize_statuses,
 )
 from openclaw_governance.config import GovernanceConfig
 from openclaw_governance.discover import discover
@@ -53,6 +56,30 @@ def _check_skills_payload(payload: dict[str, Any], check: CapabilityCheck, fail_
         check.warn(
             f"{bundled_undocumented} bundled or low-material skills undocumented (summary only)"
         )
+
+
+def _reapply_skill_governance(payload: dict[str, Any], config: GovernanceConfig) -> None:
+    skills = payload.get("skills")
+    if not isinstance(skills, list):
+        return
+    apply_skill_governance_statuses(
+        skills,
+        expected=set(config.capabilities.expected_skills),
+        exempt=set(config.capabilities.exempt_skills),
+    )
+    payload["summary"] = summarize_statuses(skills)
+
+
+def _reapply_plugin_governance(payload: dict[str, Any], config: GovernanceConfig) -> None:
+    plugins = payload.get("plugins")
+    if not isinstance(plugins, list):
+        return
+    apply_plugin_governance_statuses(
+        plugins,
+        expected=set(config.capabilities.expected_plugins),
+        exempt=set(config.capabilities.exempt_plugins),
+    )
+    payload["summary"] = summarize_statuses(plugins)
 
 
 def _check_plugins_payload(payload: dict[str, Any], check: CapabilityCheck, fail_on: set[str]) -> None:
@@ -101,7 +128,11 @@ def run_check_capabilities(
                     "discovered-skills.json missing; run discover --inventory --include-skills "
                     "or pass --live"
                 )
-        if payload is not None:
+            elif not payload:
+                check.error("discovered-skills.json is invalid or empty")
+            else:
+                _reapply_skill_governance(payload, config)
+        if payload:
             _check_skills_payload(payload, check, fail_on)
 
     if plugins:
@@ -116,7 +147,11 @@ def run_check_capabilities(
                     "discovered-plugins.json missing; run discover --inventory --include-plugins "
                     "or pass --live"
                 )
-        if payload is not None:
+            elif not payload:
+                check.error("discovered-plugins.json is invalid or empty")
+            else:
+                _reapply_plugin_governance(payload, config)
+        if payload:
             _check_plugins_payload(payload, check, fail_on)
 
     for warning in check.warnings:

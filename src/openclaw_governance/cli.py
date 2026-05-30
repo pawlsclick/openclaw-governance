@@ -16,6 +16,7 @@ from openclaw_governance.discover import discover, print_discovery_report
 from openclaw_governance.doctor import run_doctor
 from openclaw_governance.init_cmd import run_init
 from openclaw_governance.inject_agents import run_inject
+from openclaw_governance.inventory_artifacts import load_plugins_artifact, load_skills_artifact
 from openclaw_governance.discover_plugins import discover_plugins
 from openclaw_governance.discover_skills import discover_skills
 from openclaw_governance.materialize import materialize_from_discovery
@@ -259,6 +260,9 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
                 return 1
+            if not payload:
+                print("ERROR discovered-skills.json is invalid or empty", file=sys.stderr)
+                return 1
     else:
         if live:
             payload = discover_plugins(config, config.capabilities).payload
@@ -270,6 +274,9 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                     "or pass --live",
                     file=sys.stderr,
                 )
+                return 1
+            if not payload:
+                print("ERROR discovered-plugins.json is invalid or empty", file=sys.stderr)
                 return 1
 
     sys.stdout.write(json.dumps(payload, indent=2) + "\n")

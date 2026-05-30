@@ -31,8 +31,8 @@ class SkillsDiscoveryResult:
 
 def _project_cli_skill(skill: dict[str, Any], *, agent_id: str | None) -> dict[str, Any]:
     source = str(skill.get("source") or "")
-    install_path = shorten_home(str(skill.get("filePath") or skill.get("baseDir") or skill.get("source") or name))
     name = str(skill.get("name") or "unnamed")
+    install_path = shorten_home(str(skill.get("filePath") or skill.get("baseDir") or skill.get("source") or name))
     path_obj = Path(str(skill.get("filePath") or skill.get("path") or name))
     return {
         "name": name,
