@@ -4,6 +4,13 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.6.3 — 2026-05-30
+
+**Workspace skill twin merge (Issue #21 validation)**
+
+- `merge_skill_records` enriches `openclaw-workspace` runtime records from matching `workspace-scan` entries by name instead of appending duplicate rows.
+- Filesystem-only skills (name not in runtime inventory) remain separate orphan records.
+
 ## v0.6.2 — 2026-05-30
 
 **Skill duplicate classification fix**
