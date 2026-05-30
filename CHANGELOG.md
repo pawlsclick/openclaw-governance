@@ -4,6 +4,16 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.7.0 — 2026-05-30
+
+**Capability registry writing (Issue #26)**
+
+- `discover --promote --include-skills --include-plugins` writes compact `capabilities` objects to `registry.yaml` for eligible skills and enabled plugins only.
+- `discover --staged` adds active/inventory/drift capability buckets to `discovery-candidates.json`.
+- `check --skills --plugins` validates registry coverage against the active surface; inventory-only capabilities summarized without requiring registry rows.
+- Protected capability fields (`runbook`, curated `governance_status`) preserved on merge.
+- `inventory skills|plugins` handles early pipe close without `BrokenPipeError`.
+
 ## v0.6.3 — 2026-05-30
 
 **Workspace skill twin merge (Issue #21 validation)**

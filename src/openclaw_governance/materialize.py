@@ -27,6 +27,11 @@ from openclaw_governance.candidates import (
     build_discovery_candidates,
     filter_proposed_by_allowlist,
 )
+from openclaw_governance.capability_registry import (
+    build_capability_candidates,
+    merge_capabilities,
+    propose_capability_entries,
+)
 from openclaw_governance.discover_plugins import discover_plugins
 from openclaw_governance.discover_skills import discover_skills
 from openclaw_governance.inventory_artifacts import write_capability_artifacts
@@ -644,14 +649,6 @@ def materialize_from_discovery(
 
     effective_write_inventory = write_inventory or staged or promote or write
 
-    artifact_paths = write_discovery_artifacts(
-        result,
-        config,
-        candidates=candidates_report,
-        write_inventory=effective_write_inventory,
-        include_runtime_metrics=include_runtime_metrics,
-    )
-    summary.update(artifact_paths)
     effective_write_capabilities = effective_write_inventory and (include_skills or include_plugins)
     if include_skills or include_plugins:
         skills_errors: list[str] = []
@@ -719,6 +716,77 @@ def materialize_from_discovery(
                 "Capability scan complete; use --inventory or --staged to write "
                 "discovered-skills.json / discovered-plugins.json."
             )
+
+        skills_payload = (
+            skills_result.payload.get("skills")
+            if skills_result and isinstance(skills_result.payload.get("skills"), list)
+            else []
+        )
+        plugins_payload = (
+            plugins_result.payload.get("plugins")
+            if plugins_result and isinstance(plugins_result.payload.get("plugins"), list)
+            else []
+        )
+        if (include_skills or include_plugins) and (
+            skills_result is not None or plugins_result is not None
+        ):
+            capability_candidates = build_capability_candidates(
+                registry_before,
+                skills=skills_payload,
+                plugins=plugins_payload,
+                generated_at=result.generated_at,
+            )
+            summary["capability_candidates"] = capability_candidates
+            if candidates_report is not None:
+                candidates_report["capabilities"] = capability_candidates
+            elif report_candidates:
+                candidates_report = {
+                    "generated_at": result.generated_at,
+                    "candidate_count": 0,
+                    "candidates": [],
+                    "capabilities": capability_candidates,
+                }
+                summary["candidates"] = candidates_report
+
+            if write_registry:
+                proposed_capabilities = propose_capability_entries(
+                    skills_payload,
+                    plugins_payload,
+                    result.generated_at,
+                )
+                existing_capabilities = registry.get("capabilities")
+                if not isinstance(existing_capabilities, dict):
+                    existing_capabilities = {}
+                merged_capabilities, cap_created, cap_updated, cap_skipped = merge_capabilities(
+                    existing_capabilities,
+                    proposed_capabilities,
+                    staged=staged_merge,
+                    merge_skills=(
+                        skills_result is not None
+                        and not skills_blocking
+                    ),
+                    merge_plugins=(
+                        plugins_result is not None
+                        and not plugins_blocking
+                        and not plugins_errors
+                    ),
+                )
+                registry["capabilities"] = merged_capabilities
+                summary["capability_created"] = cap_created
+                summary["capability_updated"] = cap_updated
+                summary["capability_skipped_protected"] = cap_skipped
+                summary["capability_proposed_counts"] = capability_candidates.get(
+                    "proposed_counts"
+                )
+
+    artifact_paths = write_discovery_artifacts(
+        result,
+        config,
+        candidates=candidates_report,
+        write_inventory=effective_write_inventory,
+        include_runtime_metrics=include_runtime_metrics,
+    )
+    summary.update(artifact_paths)
     summary["read_only"] = (
         not effective_write_inventory
         and not include_runtime_metrics

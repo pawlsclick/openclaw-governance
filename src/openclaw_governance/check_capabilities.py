@@ -4,19 +4,31 @@ from __future__ import annotations
 
 from typing import Any
 
+import yaml
+
 from openclaw_governance.capability_governance import (
     DEFAULT_CHECK_FAIL_ON,
     apply_plugin_governance_statuses,
     apply_skill_governance_statuses,
     plugin_is_material,
-    skill_is_material,
     summarize_statuses,
+)
+from openclaw_governance.capability_registry import (
+    _capabilities_section,
+    capability_is_governed,
+    is_active_plugin,
+    is_active_skill,
+    is_inventory_only_plugin,
+    is_inventory_only_skill,
+    plugin_registry_id,
+    skill_registry_id,
 )
 from openclaw_governance.config import GovernanceConfig
 from openclaw_governance.discover import discover
 from openclaw_governance.discover_plugins import discover_plugins
 from openclaw_governance.discover_skills import discover_skills
 from openclaw_governance.inventory_artifacts import load_plugins_artifact, load_skills_artifact
+from openclaw_governance.registry_common import load_registry
 
 
 class CapabilityCheck:
@@ -31,33 +43,104 @@ class CapabilityCheck:
         self.warnings.append(f"WARN {message}")
 
 
-def _check_skills_payload(payload: dict[str, Any], check: CapabilityCheck, fail_on: set[str]) -> None:
+def _load_registry_capabilities(config: GovernanceConfig, check: CapabilityCheck) -> dict[str, Any]:
+    path = config.registry_path
+    empty: dict[str, Any] = {"schema_version": 1, "skills": [], "plugins": []}
+    if not path.is_file():
+        return empty
+    try:
+        registry = load_registry(path)
+    except OSError as exc:
+        check.error(f"{path} cannot be read: {exc}")
+        return empty
+    except yaml.YAMLError as exc:
+        check.error(f"{path} does not parse as YAML: {exc}")
+        return empty
+    except ValueError as exc:
+        check.error(str(exc))
+        return empty
+    return _capabilities_section(registry)
+
+
+def _registry_skill_index(section: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("id")): item
+        for item in section.get("skills", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+
+
+def _registry_plugin_index(section: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("id")): item
+        for item in section.get("plugins", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+
+
+def _skills_payload_registry_checks_reliable(payload: dict[str, Any]) -> bool:
+    """Registry merge is skipped when discovery had errors; do not report drift."""
+    errors = payload.get("errors")
+    return not (isinstance(errors, list) and errors)
+
+
+def _check_skills_payload(
+    payload: dict[str, Any],
+    check: CapabilityCheck,
+    fail_on: set[str],
+    registry_section: dict[str, Any],
+) -> None:
     skills = payload.get("skills")
     if not isinstance(skills, list):
         check.error("discovered-skills.json missing skills array")
         return
 
-    undocumented_material = 0
+    reg_skills = _registry_skill_index(registry_section)
+    inventory_only = 0
+    check_registry = _skills_payload_registry_checks_reliable(payload)
+    if not check_registry and payload.get("degraded") is True:
+        check.error(
+            "skills registry coverage could not be validated: discovery degraded"
+        )
+
     for record in skills:
         if not isinstance(record, dict):
             check.error("discovered-skills.json contains non-object skill entries")
             continue
-        status = str(record.get("governance_status") or "undocumented")
-        if status == "undocumented" and skill_is_material(record):
-            undocumented_material += 1
-            name = record.get("name", "?")
-            if "undocumented_skill" in fail_on:
-                check.error(f"undocumented skill: {name}")
-            else:
-                check.warn(f"undocumented skill: {name}")
 
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    raw_undocumented = summary.get("undocumented", 0)
-    undocumented_total = raw_undocumented if isinstance(raw_undocumented, int) else 0
-    bundled_undocumented = undocumented_total - undocumented_material
-    if bundled_undocumented > 0 and "undocumented_skill" not in fail_on:
+        if is_inventory_only_skill(record):
+            inventory_only += 1
+            continue
+
+        if not is_active_skill(record):
+            inventory_only += 1
+            continue
+
+        if not check_registry:
+            continue
+
+        name = str(record.get("name") or "?")
+        entry_id = skill_registry_id(name)
+        reg_entry = reg_skills.get(entry_id)
+        status = str(record.get("governance_status") or "undocumented")
+        if status in {"exempt", "expected"}:
+            continue
+        governed = capability_is_governed(reg_entry) if reg_entry else False
+        if governed:
+            continue
+
+        if reg_entry is None:
+            message = f"eligible skill not in registry capabilities: {name}"
+        else:
+            message = f"active undocumented skill: {name}"
+        if "undocumented_skill" in fail_on:
+            check.error(message)
+        else:
+            check.warn(message)
+
+    if inventory_only > 0:
         check.warn(
-            f"{bundled_undocumented} bundled or low-material skills undocumented (summary only)"
+            f"{inventory_only} skills are inventory-only (ineligible or inactive; no registry required)"
         )
 
 
@@ -103,26 +186,56 @@ def _check_discovery_payload_errors(payload: dict[str, Any], check: CapabilityCh
             check.error(msg)
 
 
-def _check_plugins_payload(payload: dict[str, Any], check: CapabilityCheck, fail_on: set[str]) -> None:
+def _check_plugins_payload(
+    payload: dict[str, Any],
+    check: CapabilityCheck,
+    fail_on: set[str],
+    registry_section: dict[str, Any],
+) -> None:
     plugins = payload.get("plugins")
     if not isinstance(plugins, list):
         check.error("discovered-plugins.json missing plugins array")
         return
 
+    reg_plugins = _registry_plugin_index(registry_section)
+    inventory_only = 0
+
     for record in plugins:
         if not isinstance(record, dict):
             check.error("discovered-plugins.json contains non-object plugin entries")
             continue
+
+        if is_inventory_only_plugin(record):
+            inventory_only += 1
+            continue
+
+        if not is_active_plugin(record):
+            inventory_only += 1
+            continue
+
+        plugin_id = str(record.get("id") or record.get("name") or "?")
+        entry_id = plugin_registry_id(plugin_id)
+        reg_entry = reg_plugins.get(entry_id)
         status = str(record.get("governance_status") or "undocumented")
-        if status != "undocumented":
+        if status in {"exempt", "expected"}:
             continue
-        if not plugin_is_material(record):
+        governed = capability_is_governed(reg_entry) if reg_entry else False
+        if governed:
             continue
-        plugin_id = record.get("id") or record.get("name") or "?"
-        if "undocumented_plugin_enabled" in fail_on:
-            check.error(f"enabled undocumented plugin: {plugin_id}")
+
+        if reg_entry is None:
+            message = f"enabled plugin not in registry capabilities: {plugin_id}"
         else:
-            check.warn(f"enabled undocumented plugin: {plugin_id}")
+            message = f"enabled undocumented plugin: {plugin_id}"
+        if "undocumented_plugin_enabled" in fail_on:
+            check.error(message)
+        else:
+            check.warn(message)
+
+    if inventory_only > 0:
+        check.warn(
+            f"{inventory_only} plugins are inventory-only (disabled; no registry required)"
+        )
 
 
 def run_check_capabilities(
@@ -138,6 +251,8 @@ def run_check_capabilities(
         fail_on = set(DEFAULT_CHECK_FAIL_ON)
     else:
         fail_on = {_normalize_fail_key(item) for item in configured_fail_on}
+
+    registry_section = _load_registry_capabilities(config, check)
 
     if skills:
         payload = None
@@ -163,7 +278,7 @@ def run_check_capabilities(
                 _reapply_skill_governance(payload, config)
         if payload:
             _check_discovery_payload_errors(payload, check, "skills")
-            _check_skills_payload(payload, check, fail_on)
+            _check_skills_payload(payload, check, fail_on, registry_section)
 
     if plugins:
         payload = None
@@ -188,7 +303,7 @@ def run_check_capabilities(
                 _reapply_plugin_governance(payload, config)
         if payload:
             _check_discovery_payload_errors(payload, check, "plugins")
-            _check_plugins_payload(payload, check, fail_on)
+            _check_plugins_payload(payload, check, fail_on, registry_section)
 
     for warning in check.warnings:
         print(warning)

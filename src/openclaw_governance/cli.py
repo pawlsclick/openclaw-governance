@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -297,18 +298,32 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                 print("ERROR discovered-plugins.json is invalid or empty", file=sys.stderr)
                 return 1
 
-    sys.stdout.write(json.dumps(payload, indent=2) + "\n")
-    if live:
-        errors = payload.get("errors")
-        if isinstance(errors, list) and errors:
-            for item in errors:
-                if isinstance(item, dict):
-                    phase = item.get("phase", kind)
-                    message = item.get("message", item)
-                    print(f"ERROR discovery failed ({phase}): {message}", file=sys.stderr)
-                else:
-                    print(f"ERROR discovery failed ({kind}): {item}", file=sys.stderr)
-            return 1
+    discovery_errors: list | None = None
+    errors = payload.get("errors")
+    if isinstance(errors, list) and errors:
+        discovery_errors = errors
+
+    def emit_discovery_errors() -> None:
+        if discovery_errors is None:
+            return
+        for item in discovery_errors:
+            if isinstance(item, dict):
+                phase = item.get("phase", kind)
+                message = item.get("message", item)
+                print(f"ERROR discovery failed ({phase}): {message}", file=sys.stderr)
+            else:
+                print(f"ERROR discovery failed ({kind}): {item}", file=sys.stderr)
+
+    try:
+        sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+    except BrokenPipeError:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        emit_discovery_errors()
+        return 1 if discovery_errors is not None else 0
+    if discovery_errors is not None:
+        emit_discovery_errors()
+        return 1
     return 0
 
 
