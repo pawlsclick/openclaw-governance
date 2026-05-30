@@ -673,7 +673,7 @@ def materialize_from_discovery(
         ]
         if staged and not promote:
             summary["promote_hint"] = (
-                "v0.5.2: discover --staged writes inventory + discovery-candidates.json only. "
+                "discover --staged wrote inventory + discovery-candidates.json only. "
                 "Use discover --promote to apply registry changes."
             )
         return summary
