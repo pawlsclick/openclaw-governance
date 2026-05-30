@@ -81,6 +81,42 @@ def test_merge_workflows_unions_cron_job_ids() -> None:
     assert sorted(row["cron_job_ids"]) == ["job-1", "job-2"]
 
 
+def test_merge_workflows_syncs_discovered_from_cron_fingerprint() -> None:
+    existing = [
+        {
+            "id": "main.cron.daily",
+            "status": "discovered",
+            "orchestration": "openclaw_cron",
+            "cron_fingerprint": "old_fp",
+            "discovered_from": {
+                "source": "openclaw-gov discover",
+                "cron_fingerprint": "old_fp",
+                "cron_instances": [{"job_id": "job-1", "fingerprint": "old_fp"}],
+            },
+        }
+    ]
+    proposed = [
+        {
+            "id": "main.cron.daily",
+            "status": "discovered",
+            "orchestration": "openclaw_cron",
+            "cron_fingerprint": "new_fp",
+            "discovered_from": {
+                "source": "openclaw-gov discover",
+                "cron_fingerprint": "new_fp",
+                "cron_instances": [{"job_id": "job-1", "fingerprint": "new_fp"}],
+            },
+        }
+    ]
+    merged, _created, updated, _skipped = merge_workflows(existing, proposed, staged=True)
+    row = merged[0]
+    assert updated == ["main.cron.daily"]
+    assert row["cron_fingerprint"] == "new_fp"
+    assert row["discovered_from"]["cron_fingerprint"] == "new_fp"
+    assert row["discovered_from"]["cron_instances"][0]["fingerprint"] == "new_fp"
+    assert row["discovered_from"]["source"] == "openclaw-gov discover"
+
+
 def test_merge_workflows_staged_skips_active_without_cron_union() -> None:
     existing = [
         {
