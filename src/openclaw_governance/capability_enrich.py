@@ -11,6 +11,9 @@ SCOPE_NOTE = (
     "add agent-scoped entries and orphan detection."
 )
 
+WORKSPACE_RUNTIME_SOURCE = "openclaw-workspace"
+WORKSPACE_SCAN_SOURCE = "workspace-scan"
+
 
 def shorten_home(path: str) -> str:
     home = Path.home()
@@ -160,13 +163,49 @@ def mark_duplicate_skills(skills: list[dict[str, Any]]) -> None:
             by_realpath[resolved] = str(record.get("name") or resolved)
 
 
+def _enrich_workspace_cli_from_scan(cli: dict[str, Any], fs: dict[str, Any]) -> None:
+    fs_path = str(fs.get("install_path") or "").strip()
+    if fs_path and not str(cli.get("install_path") or "").strip():
+        cli["install_path"] = fs_path
+    flags = cli.setdefault("flags", {})
+    if not isinstance(flags, dict):
+        flags = {}
+        cli["flags"] = flags
+    fs_flags = fs.get("flags") if isinstance(fs.get("flags"), dict) else {}
+    if fs_flags.get("symlink"):
+        flags["symlink"] = True
+    flags["orphan"] = False
+
+
 def merge_skill_records(
     cli_records: list[dict[str, Any]],
     workspace_records: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    seen_paths: set[str] = {str(item.get("install_path") or "") for item in cli_records}
+    workspace_cli_by_name: dict[str, dict[str, Any]] = {}
+    for record in cli_records:
+        if str(record.get("source") or "") != WORKSPACE_RUNTIME_SOURCE:
+            continue
+        name_key = str(record.get("name") or "").lower()
+        if name_key:
+            workspace_cli_by_name[name_key] = record
+
+    seen_paths: set[str] = {
+        str(item.get("install_path") or "")
+        for item in cli_records
+        if str(item.get("install_path") or "").strip()
+    }
     merged = list(cli_records)
     for record in workspace_records:
+        if str(record.get("source") or "") == WORKSPACE_SCAN_SOURCE:
+            name_key = str(record.get("name") or "").lower()
+            cli_match = workspace_cli_by_name.get(name_key)
+            if cli_match is not None:
+                _enrich_workspace_cli_from_scan(cli_match, record)
+                path_key = str(record.get("install_path") or "")
+                if path_key:
+                    seen_paths.add(path_key)
+                continue
+
         path_key = str(record.get("install_path") or "")
         if path_key and path_key in seen_paths:
             continue

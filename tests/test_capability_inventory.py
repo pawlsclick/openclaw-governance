@@ -3,7 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from openclaw_governance.capability_enrich import mark_duplicate_skills, scan_workspace_skills
+from openclaw_governance.capability_enrich import (
+    WORKSPACE_RUNTIME_SOURCE,
+    WORKSPACE_SCAN_SOURCE,
+    mark_duplicate_skills,
+    merge_skill_records,
+    scan_workspace_skills,
+)
 from openclaw_governance.capability_governance import apply_plugin_governance_statuses, apply_skill_governance_statuses
 from openclaw_governance.check_capabilities import run_check_capabilities
 from openclaw_governance.config import CapabilitiesConfig, GovernanceConfig
@@ -169,6 +175,116 @@ def test_mark_duplicate_skills_skips_empty_install_path() -> None:
     mark_duplicate_skills(skills)
     for record in skills:
         assert record["flags"].get("duplicate_of") is None
+
+
+def test_merge_enriches_workspace_cli_from_scan() -> None:
+    cli_records = [
+        {
+            "name": "academic-verify",
+            "source": WORKSPACE_RUNTIME_SOURCE,
+            "install_path": "",
+            "flags": {"symlink": False, "duplicate_of": None, "orphan": False},
+        }
+    ]
+    workspace_records = [
+        {
+            "name": "academic-verify",
+            "source": WORKSPACE_SCAN_SOURCE,
+            "install_path": "~/.openclaw/workspace/skills/academic-verify",
+            "flags": {"symlink": True, "duplicate_of": None, "orphan": False},
+        }
+    ]
+    merged = merge_skill_records(cli_records, workspace_records)
+    assert len(merged) == 1
+    record = merged[0]
+    assert record["source"] == WORKSPACE_RUNTIME_SOURCE
+    assert record["install_path"] == "~/.openclaw/workspace/skills/academic-verify"
+    assert record["flags"]["symlink"] is True
+    assert record["flags"]["orphan"] is False
+
+
+def test_merge_keeps_orphan_when_no_runtime_match() -> None:
+    cli_records = [
+        {
+            "name": "demo-skill",
+            "source": WORKSPACE_RUNTIME_SOURCE,
+            "install_path": "",
+            "flags": {},
+        }
+    ]
+    workspace_records = [
+        {
+            "name": "local-only",
+            "source": WORKSPACE_SCAN_SOURCE,
+            "install_path": "/tmp/workspace/skills/local-only",
+            "flags": {"orphan": True},
+        }
+    ]
+    merged = merge_skill_records(cli_records, workspace_records)
+    assert len(merged) == 2
+    orphan = next(item for item in merged if item["name"] == "local-only")
+    assert orphan["flags"]["orphan"] is True
+
+
+def test_merge_does_not_drop_unrelated_cli() -> None:
+    cli_records = [
+        {"name": "bundled-skill", "source": "openclaw-bundled", "install_path": "", "flags": {}},
+    ]
+    workspace_records = [
+        {
+            "name": "bundled-skill",
+            "source": WORKSPACE_SCAN_SOURCE,
+            "install_path": "/tmp/workspace/skills/bundled-skill",
+            "flags": {},
+        }
+    ]
+    merged = merge_skill_records(cli_records, workspace_records)
+    assert len(merged) == 2
+
+
+def test_discover_skills_merges_workspace_twins(tmp_path, monkeypatch) -> None:
+    fixture = {
+        "workspaceDir": str(tmp_path / "workspace"),
+        "managedSkillsDir": str(tmp_path / "skills"),
+        "skills": [
+            {
+                "name": "academic-verify",
+                "description": "Academic verify",
+                "source": "openclaw-workspace",
+                "eligible": True,
+                "disabled": False,
+                "bundled": False,
+                "missing": {"bins": [], "anyBins": [], "env": [], "config": [], "os": []},
+            }
+        ],
+    }
+
+    def _mock(argv, **kwargs):
+        if " ".join(argv).startswith("skills list"):
+            return fixture, None
+        return None, f"unexpected argv: {argv}"
+
+    monkeypatch.setattr("openclaw_governance.discover_skills.run_openclaw_json", _mock)
+    monkeypatch.setattr(
+        "openclaw_governance.discover_skills.openclaw_cli_version",
+        lambda **kwargs: "openclaw 2026.5.0",
+    )
+
+    gov = tmp_path / "gov"
+    workspace = tmp_path / "workspace"
+    skill_dir = workspace / "skills" / "academic-verify"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("# Academic verify\n", encoding="utf-8")
+
+    config = GovernanceConfig(openclaw_home=tmp_path / "oc", governance_root=gov)
+    agents = [DiscoveredAgent("main", "Main", "role", str(workspace))]
+    payload = discover_skills(config, agents, config.capabilities).payload
+
+    academic = [item for item in payload["skills"] if item["name"] == "academic-verify"]
+    assert len(academic) == 1
+    assert academic[0]["source"] == WORKSPACE_RUNTIME_SOURCE
+    assert academic[0]["install_path"]
+    assert academic[0]["flags"]["orphan"] is False
 
 
 def test_check_plugins_fails_on_undocumented_enabled(tmp_path, mock_openclaw_json) -> None:

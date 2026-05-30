@@ -23,11 +23,11 @@ flowchart TB
   GH -->|CI| DRIFT["governance-drift.yml\nregen --check · check"]
 ```
 
-## Install (v0.6.2)
+## Install (v0.6.3)
 
-Pinned release: `@v0.6.2`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
+Pinned release: `@v0.6.3`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
 
-See [CHANGELOG.md](CHANGELOG.md) and [docs/releases/v0.6.2.md](docs/releases/v0.6.2.md) for the v0.6.2 duplicate classification fix. Skill capture hotfix: [v0.6.1](docs/releases/v0.6.1.md). Capability inventory: [v0.6.0](docs/releases/v0.6.0.md).
+See [CHANGELOG.md](CHANGELOG.md) and [docs/releases/v0.6.3.md](docs/releases/v0.6.3.md) for the v0.6.3 workspace skill merge fix. Duplicate classification fix: [v0.6.2](docs/releases/v0.6.2.md). Skill capture hotfix: [v0.6.1](docs/releases/v0.6.1.md). Capability inventory: [v0.6.0](docs/releases/v0.6.0.md).
 
 ### Ubuntu / Debian (pipx — recommended)
 
@@ -39,14 +39,14 @@ sudo apt install -y pipx python3-venv
 pipx ensurepath
 # Log out/in, or: source ~/.profile
 
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.2"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.3"
 openclaw-gov --version
 ```
 
 **Upgrade** to a newer tag (pipx matches installs by full URL — use `--force` when the tag changes):
 
 ```bash
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.2" --force
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.3" --force
 ```
 
 `pipx upgrade openclaw-governance` alone does not change an existing git tag pin.
@@ -60,7 +60,7 @@ Avoid `pip install --break-system-packages` on the host Python unless you accept
 When you already work inside a virtualenv (or a image without PEP 668 restrictions):
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.2"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.3"
 ```
 
 ### Editable dev install
@@ -245,7 +245,7 @@ Promote workflows to `active` / `required` after you verify triggers and fill in
 
 ## CI
 
-After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs `@v0.6.2` from git, runs `openclaw-gov regen --check` and `openclaw-gov check`, and runs `openclaw-gov discover --staged` with `git diff --exit-code workflows/registry.yaml` so staged discovery cannot mutate the registry in CI.
+After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs `@v0.6.3` from git, runs `openclaw-gov regen --check` and `openclaw-gov check`, and runs `openclaw-gov discover --staged` with `git diff --exit-code workflows/registry.yaml` so staged discovery cannot mutate the registry in CI.
 
 **Existing governance repos:** `init` does not overwrite a workflow file already on disk. After upgrading to v0.6.0, manually bump the install pin in your repo's `.github/workflows/governance-drift.yml` (see [migrating guide](docs/migrating-existing-governance.md#ci-workflow-pin-existing-governance-repos)).
 
