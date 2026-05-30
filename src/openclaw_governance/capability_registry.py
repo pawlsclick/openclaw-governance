@@ -185,6 +185,18 @@ def _merge_capability_list(
             by_id[entry_id] = new_entry
             created.append(entry_id)
 
+    proposed_ids = {
+        str(entry.get("id"))
+        for entry in proposed
+        if isinstance(entry, dict) and entry.get("id")
+    }
+    for entry_id in list(by_id):
+        if entry_id in proposed_ids:
+            continue
+        if _capability_is_protected(by_id[entry_id]):
+            continue
+        del by_id[entry_id]
+
     merged = sorted(by_id.values(), key=lambda item: str(item.get("id", "")))
     return merged, created, updated, skipped_protected
 

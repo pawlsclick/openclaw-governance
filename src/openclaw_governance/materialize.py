@@ -727,7 +727,9 @@ def materialize_from_discovery(
             if plugins_result and isinstance(plugins_result.payload.get("plugins"), list)
             else []
         )
-        if (include_skills or include_plugins) and (skills_payload or plugins_payload):
+        if (include_skills or include_plugins) and (
+            skills_result is not None or plugins_result is not None
+        ):
             capability_candidates = build_capability_candidates(
                 registry_before,
                 skills=skills_payload,
