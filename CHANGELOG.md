@@ -4,6 +4,14 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.6.1 — 2026-05-30
+
+**Skill JSON capture hotfix (Issue #21 validation)**
+
+- `run_openclaw_json` captures CLI stdout via temp file instead of a pipe, fixing truncated `openclaw skills list --json` on large skill sets.
+- `discover --staged --include-skills` writes `discovered-skills.json` even when CLI capture fails, using filesystem fallback with `degraded: true` and `cli_capture` metadata.
+- `check --skills` no longer fails on a missing artifact when staged discovery already summarized skills.
+
 ## v0.6.0 — 2026-05-30
 
 **Plugin and skill capability inventory**

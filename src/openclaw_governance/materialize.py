@@ -685,19 +685,28 @@ def materialize_from_discovery(
         capabilities_errors = skills_errors + plugins_errors
         if capabilities_errors:
             summary["capabilities_errors"] = capabilities_errors
+
+        def _blocking_capability_error(message: str) -> bool:
+            return "discover_skills is false" in message or "discover_plugins is false" in message
+
+        skills_blocking = [msg for msg in skills_errors if _blocking_capability_error(msg)]
+        plugins_blocking = [msg for msg in plugins_errors if _blocking_capability_error(msg)]
         write_skills = (
             effective_write_capabilities
             and include_skills
-            and not skills_errors
             and skills_result is not None
+            and not skills_blocking
         )
         write_plugins = (
             effective_write_capabilities
             and include_plugins
-            and not plugins_errors
             and plugins_result is not None
+            and not plugins_blocking
+            and not plugins_errors
         )
         if write_skills or write_plugins:
+            if write_skills and skills_result is not None and skills_result.payload.get("degraded") is True:
+                summary["skills_artifact_degraded"] = True
             summary.update(
                 write_capability_artifacts(
                     config,

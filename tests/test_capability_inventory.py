@@ -193,3 +193,77 @@ def test_check_plugins_passes_when_expected(tmp_path, mock_openclaw_json) -> Non
         encoding="utf-8",
     )
     assert run_check_capabilities(config, plugins=True) == 0
+
+
+def test_discover_skills_marks_degraded_on_cli_failure(tmp_path, monkeypatch) -> None:
+    def _fail(argv, **kwargs):
+        return None, "openclaw skills list --json JSON parse error: truncated"
+
+    monkeypatch.setattr("openclaw_governance.discover_skills.run_openclaw_json", _fail)
+    monkeypatch.setattr(
+        "openclaw_governance.discover_skills.openclaw_cli_version",
+        lambda **kwargs: "openclaw 2026.5.0",
+    )
+
+    gov = tmp_path / "gov"
+    workspace = tmp_path / "workspace"
+    (workspace / "skills" / "local-skill").mkdir(parents=True)
+    (workspace / "skills" / "local-skill" / "SKILL.md").write_text("# Local\n", encoding="utf-8")
+    config = GovernanceConfig(openclaw_home=tmp_path / "oc", governance_root=gov)
+    agents = [DiscoveredAgent("main", "Main", "role", str(workspace))]
+    result = discover_skills(config, agents, config.capabilities)
+
+    assert result.payload["cli_capture"] == "failed"
+    assert result.payload["degraded"] is True
+    assert result.errors
+    assert any(item["name"] == "local-skill" for item in result.payload["skills"])
+
+
+def test_materialize_writes_skills_artifact_on_cli_failure(tmp_path, monkeypatch) -> None:
+    def _fail(argv, **kwargs):
+        joined = " ".join(argv)
+        if joined.startswith("skills list"):
+            return None, "openclaw skills list --json JSON parse error: truncated"
+        if joined.startswith("plugins list"):
+            return {
+                "plugins": [{"id": "discord", "name": "Discord", "enabled": True, "status": "loaded"}]
+            }, None
+        return None, f"unexpected argv: {argv}"
+
+    monkeypatch.setattr("openclaw_governance.discover_skills.run_openclaw_json", _fail)
+    monkeypatch.setattr("openclaw_governance.discover_plugins.run_openclaw_json", _fail)
+    monkeypatch.setattr(
+        "openclaw_governance.discover_skills.openclaw_cli_version",
+        lambda **kwargs: "openclaw 2026.5.0",
+    )
+    monkeypatch.setattr(
+        "openclaw_governance.discover_plugins.openclaw_cli_version",
+        lambda **kwargs: "openclaw 2026.5.0",
+    )
+
+    gov = tmp_path / "gov"
+    gov.mkdir()
+    workspace = tmp_path / "workspace"
+    (workspace / "skills" / "local-skill").mkdir(parents=True)
+    (workspace / "skills" / "local-skill" / "SKILL.md").write_text("# Local\n", encoding="utf-8")
+    result = DiscoveryResult(
+        generated_at="2026-01-01T00:00:00Z",
+        openclaw_home=str(tmp_path / "oc"),
+        openclaw_config_path="/tmp/openclaw.json",
+        agents=[DiscoveredAgent("main", "Main", "role", str(workspace))],
+    )
+    config = GovernanceConfig(openclaw_home=tmp_path / "oc", governance_root=gov)
+    summary = materialize_from_discovery(
+        result,
+        config,
+        staged=True,
+        include_skills=True,
+        include_plugins=True,
+    )
+
+    assert summary.get("skills_inventory_path")
+    assert summary.get("skills_artifact_degraded") is True
+    skills = json.loads((gov / "workflows/discovered-skills.json").read_text(encoding="utf-8"))
+    assert skills["cli_capture"] == "failed"
+    assert skills["degraded"] is True
+    assert skills["summary"]["total"] >= 1
