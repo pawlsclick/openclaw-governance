@@ -149,7 +149,7 @@ def discover_skills(
         "openclaw_cli_version": openclaw_cli_version(),
         "scope_note": SCOPE_NOTE,
         "cli_capture": "failed" if err else "ok",
-        "degraded": bool(errors),
+        "degraded": err is not None and bool(skills),
         "skills": skills,
         "summary": summarize_statuses(skills),
         "warnings": warnings,

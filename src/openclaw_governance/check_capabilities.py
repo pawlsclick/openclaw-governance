@@ -89,13 +89,18 @@ def _check_discovery_payload_errors(payload: dict[str, Any], check: CapabilityCh
     errors = payload.get("errors")
     if not isinstance(errors, list) or not errors:
         return
+    degraded = payload.get("degraded") is True
     for item in errors:
         if isinstance(item, dict):
             phase = item.get("phase") or label
             message = item.get("message") or item
-            check.error(f"discovery failed ({phase}): {message}")
+            msg = f"discovery failed ({phase}): {message}"
         else:
-            check.error(f"discovery failed ({label}): {item}")
+            msg = f"discovery failed ({label}): {item}"
+        if degraded:
+            check.warn(msg.replace("discovery failed", "discovery degraded", 1))
+        else:
+            check.error(msg)
 
 
 def _check_plugins_payload(payload: dict[str, Any], check: CapabilityCheck, fail_on: set[str]) -> None:

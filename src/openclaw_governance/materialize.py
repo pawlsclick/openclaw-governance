@@ -707,8 +707,6 @@ def materialize_from_discovery(
         if write_skills or write_plugins:
             if write_skills and skills_result is not None and skills_result.errors:
                 summary["skills_artifact_degraded"] = True
-            if write_plugins and plugins_result is not None and plugins_result.errors:
-                summary["plugins_artifact_degraded"] = True
             summary.update(
                 write_capability_artifacts(
                     config,
