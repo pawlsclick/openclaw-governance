@@ -19,7 +19,7 @@ metadata:
         description: Override path to governance root when not using default ~/.openclaw/governance or nearest governance.config.yaml.
     install:
       - kind: uv
-        package: "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.7.1"
+        package: "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.7.4"
         bins: [openclaw-gov]
     emoji: "📋"
     homepage: https://github.com/pawlsclick/openclaw-governance
@@ -45,7 +45,7 @@ export GOV_ROOT="${OPENCLAW_GOVERNANCE_ROOT:-$HOME/.openclaw/governance}"
 This skill assumes **openclaw-gov v0.7.1+** (idempotent capability promote, capability registry writing). Before using those flags:
 
 ```bash
-openclaw-gov --version   # expect 0.5.5 or newer
+openclaw-gov --version   # expect 0.7.4 or newer
 ```
 
 If older, upgrade per [Install CLI](#install-cli-operators) before `--inventory`, `--staged`, `--promote`, or schema-v2 assumptions.
@@ -262,7 +262,7 @@ Migrating guide: [docs/migrating-existing-governance.md](https://github.com/pawl
 |---------|-----|
 | No governance root | `openclaw-gov init --root "$GOV_ROOT"` |
 | Dirty worktree | Do not ship; coordinate with human |
-| Old CLI | `openclaw-gov --version`; upgrade to v0.7.1+ |
+| Old CLI | `openclaw-gov --version`; upgrade to v0.7.4+ |
 | `regen --check` fails | On feature branch: `regen --write`, re-check |
 | promote touched curated rows | Restore from git; `--staged` + `--allowlist` |
 
@@ -276,16 +276,16 @@ git diff --exit-code workflows/registry.yaml
 
 ## Install CLI (operators)
 
-**Note:** Frontmatter `metadata.openclaw.install` (kind `uv`) is for **ClawHub/agent auto-install**. Humans on Ubuntu should prefer **pipx**; macOS/containers use **pip** — same git pin `@v0.7.1`, not competing products.
+**Note:** Frontmatter `metadata.openclaw.install` (kind `uv`) is for **ClawHub/agent auto-install**. Humans on Ubuntu should prefer **pipx**; macOS/containers use **pip** — same git pin `@v0.7.4`, not competing products.
 
 Ubuntu (pipx recommended):
 
 ```bash
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.7.1"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.7.4"
 ```
 
 Mac / venv:
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.7.1"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.7.4"
 ```

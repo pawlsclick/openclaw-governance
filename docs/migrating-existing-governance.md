@@ -5,7 +5,7 @@ Use this guide when you already have a governance repository with hand-authored 
 ## Prerequisites
 
 - OpenClaw installed with `openclaw.json` listing your agents
-- `openclaw-gov` v0.5.5+ installed ([README](../README.md))
+- `openclaw-gov` v0.7.4+ installed ([README](../README.md))
 - A backup or git commit of your governance repo before merging
 
 ## Discover flow (brownfield)
@@ -87,10 +87,10 @@ Manually bump the install line in your governance repo's copy:
 
 ```yaml
 # .github/workflows/governance-drift.yml
-- run: python -m pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.5"
+- run: python -m pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.7.4"
 ```
 
-Commit that change with your inventory refresh. New installs from `init` already get `@v0.5.5` from the upstream template.
+Commit that change with your inventory refresh. New installs from `init` already get `@v0.7.4` from the upstream template.
 
 ## Set the governance root
 
