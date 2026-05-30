@@ -1,9 +1,10 @@
 ---
-name: openclaw-governance
+name: mnemospark-openclaw-governance
 description: Operate OpenClaw multi-agent governance with openclaw-gov — read-only audit, material change documentation, staged discovery, validate registry/runbooks, and ship governance PRs. Use when changing crons, workflows, runbooks, registry.yaml, RACI, governance.config.yaml, refreshing inventory, running governance check, or completing material system config changes.
 version: 1.1.0
 metadata:
   openclaw:
+    skillKey: mnemospark-openclaw-governance
     requires:
       bins:
         - openclaw-gov
