@@ -160,6 +160,17 @@ def test_duplicate_skills_marked() -> None:
     assert skills[1]["flags"]["duplicate_of"] == "a"
 
 
+def test_mark_duplicate_skills_skips_empty_install_path() -> None:
+    skills = [
+        {"name": "1password", "install_path": "", "flags": {}},
+        {"name": "academic-verify", "install_path": "", "flags": {}},
+        {"name": "adler-reading-coach", "install_path": "", "flags": {}},
+    ]
+    mark_duplicate_skills(skills)
+    for record in skills:
+        assert record["flags"].get("duplicate_of") is None
+
+
 def test_check_plugins_fails_on_undocumented_enabled(tmp_path, mock_openclaw_json) -> None:
     gov = tmp_path / "gov"
     (gov / "workflows").mkdir(parents=True)

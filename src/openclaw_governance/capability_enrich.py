@@ -143,11 +143,15 @@ def scan_workspace_skills(
 def mark_duplicate_skills(skills: list[dict[str, Any]]) -> None:
     by_realpath: dict[str, str] = {}
     for record in skills:
-        raw_path = record.get("install_path") or ""
+        raw_path = str(record.get("install_path") or "").strip()
+        if not raw_path:
+            # Runtime CLI skills often omit filePath; Path("").resolve() is CWD and
+            # falsely marks every pathless skill as a duplicate of the first one seen.
+            continue
         try:
-            resolved = str(Path(str(raw_path).replace("~", str(Path.home()))).resolve())
+            resolved = str(Path(raw_path.replace("~", str(Path.home()))).resolve())
         except OSError:
-            resolved = str(raw_path)
+            continue
         if resolved in by_realpath:
             if not isinstance(record.get("flags"), dict):
                 record["flags"] = {}
