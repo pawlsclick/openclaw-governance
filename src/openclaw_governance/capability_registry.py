@@ -23,6 +23,7 @@ CAPABILITY_DISCOVERY_REFRESH_FIELDS = (
     "agent_id",
     "plugin_id",
     "discovered_at",
+    "governance_status",
 )
 
 
@@ -365,7 +366,5 @@ def build_capability_candidates(
 
 
 def capability_is_governed(entry: dict[str, Any]) -> bool:
-    status = str(entry.get("governance_status") or "")
-    if status in {"expected", "exempt"}:
-        return True
+    """True when registry documents governance via runbook (not status alone)."""
     return bool(str(entry.get("runbook") or "").strip())
