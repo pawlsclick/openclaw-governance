@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from openclaw_governance.agent_scope import (
+    AGENT_GOVERNANCE_SCOPE_REFRESH_FIELDS,
+    agent_explicitly_promoted_to_broadcast,
+)
 from openclaw_governance.registry_common import VALID_WORKFLOW_STATUSES
 
 # Operator-promoted workflows: discover must not overwrite hand-authored fields.
@@ -62,6 +66,7 @@ def merge_agents(
     proposed: list[dict[str, Any]],
     *,
     refresh_discovery_fields: bool = False,
+    plugin_scope_index_available: bool = True,
 ) -> list[dict[str, Any]]:
     """Merge agent entries; preserve hand-authored fields from existing rows."""
     by_id: dict[str, dict[str, Any]] = {}
@@ -76,12 +81,28 @@ def merge_agents(
         agent_id = str(item["id"])
         if agent_id in by_id:
             current = by_id[agent_id]
+            promoted = agent_explicitly_promoted_to_broadcast(current)
+            was_plugin_scoped = current.get("governance_scope") == "plugin"
             for key, value in item.items():
                 if key in discovery_fields:
                     if refresh_discovery_fields or key not in current or current[key] in (None, ""):
                         current[key] = value
-                elif key not in current:
+                elif key in AGENT_GOVERNANCE_SCOPE_REFRESH_FIELDS and not promoted:
                     current[key] = value
+                elif key not in current and not (
+                    promoted and key in AGENT_GOVERNANCE_SCOPE_REFRESH_FIELDS
+                ):
+                    current[key] = value
+            if (
+                not agent_explicitly_promoted_to_broadcast(current)
+                and was_plugin_scoped
+                and plugin_scope_index_available
+            ):
+                proposal_keeps_plugin_scope = item.get("governance_scope") == "plugin"
+                if not proposal_keeps_plugin_scope:
+                    current.pop("governance_scope", None)
+                    if item.get("raci_broadcast_excluded") is not True:
+                        current.pop("raci_broadcast_excluded", None)
         else:
             by_id[agent_id] = dict(item)
 
@@ -244,6 +265,7 @@ def merge_registry_for_adopt(
         target_agents,
         source_agents,
         refresh_discovery_fields=source_authoritative,
+        plugin_scope_index_available=False,
     )
     sections_merged.append("agents")
 

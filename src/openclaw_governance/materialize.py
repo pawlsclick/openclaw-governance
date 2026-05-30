@@ -10,6 +10,11 @@ from typing import Any
 
 import yaml
 
+from openclaw_governance.agent_scope import (
+    apply_plugin_scope_to_agent_entry,
+    is_plugin_scoped_agent,
+    load_plugin_scope_index,
+)
 from openclaw_governance.config import GovernanceConfig
 from openclaw_governance.discover import (
     DiscoveredAgent,
@@ -269,7 +274,15 @@ def workflow_entry_from_cron_group(
     }
 
 
-def agents_registry_entries(result: DiscoveryResult, config: GovernanceConfig) -> list[dict[str, Any]]:
+def agents_registry_entries(
+    result: DiscoveryResult,
+    config: GovernanceConfig,
+    *,
+    plugin_ids: set[str] | None = None,
+    plugin_roots: list | None = None,
+) -> list[dict[str, Any]]:
+    if plugin_ids is None or plugin_roots is None:
+        plugin_ids, plugin_roots, _ = load_plugin_scope_index(config)
     entries: list[dict[str, Any]] = []
     for agent in result.agents:
         entry: dict[str, Any] = {
@@ -280,6 +293,8 @@ def agents_registry_entries(result: DiscoveryResult, config: GovernanceConfig) -
         }
         if agent.agent_id in config.raci_broadcast_excluded:
             entry["raci_broadcast_excluded"] = True
+        elif is_plugin_scoped_agent(agent.agent_id, agent.workspace, plugin_ids, plugin_roots):
+            apply_plugin_scope_to_agent_entry(entry, plugin_scoped=True)
         if agent.git_repos:
             entry["repositories"] = agent.git_repos
         entries.append(entry)
@@ -602,13 +617,22 @@ def materialize_from_discovery(
         summary["candidates"] = candidates_report
 
     registry["generated_at"] = result.generated_at
-    proposed_agents = agents_registry_entries(result, config)
+    plugin_ids, plugin_roots, plugin_scope_index_available = load_plugin_scope_index(config)
+    proposed_agents = agents_registry_entries(
+        result,
+        config,
+        plugin_ids=plugin_ids,
+        plugin_roots=plugin_roots,
+    )
     existing_agents = registry.get("agents")
     if not isinstance(existing_agents, list):
         existing_agents = []
     # Promote/staged: preserve curated agent fields; only fill gaps on new agents.
     registry["agents"] = merge_agents(
-        existing_agents, proposed_agents, refresh_discovery_fields=not staged_merge
+        existing_agents,
+        proposed_agents,
+        refresh_discovery_fields=not staged_merge,
+        plugin_scope_index_available=plugin_scope_index_available,
     )
     agent_id_list = [entry["id"] for entry in registry["agents"]]
     accountable = config.accountable_humans[0] if config.accountable_humans else "Operator"

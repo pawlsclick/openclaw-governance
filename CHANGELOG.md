@@ -4,6 +4,14 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.7.4 — 2026-05-30
+
+**Plugin-scoped agents excluded from platform RACI broadcast (Issue #33)**
+
+- Auto-detect plugin-owned agents via `openclaw plugins list --json` (id match or workspace under plugin rootDir).
+- Default new plugin agents to `governance_scope: plugin` and `raci_broadcast_excluded: true`.
+- Re-promote refreshes plugin scope unless operator explicitly promotes with `governance_scope: core` or `raci_broadcast_excluded: false`.
+
 ## v0.7.3 — 2026-05-30
 
 **CLI version display (follow-up to v0.7.2)**

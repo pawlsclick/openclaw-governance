@@ -111,10 +111,22 @@ def agents_excluded_from_raci_broadcast(registry: dict[str, Any]) -> set[str]:
     agents = registry.get("agents")
     if isinstance(agents, list):
         for entry in agents:
-            if isinstance(entry, dict) and entry.get("raci_broadcast_excluded") is True:
-                agent_id = entry.get("id")
-                if isinstance(agent_id, str):
-                    excluded.add(agent_id)
+            if not isinstance(entry, dict):
+                continue
+            agent_id = entry.get("id")
+            if not isinstance(agent_id, str) or not agent_id:
+                continue
+            if entry.get("governance_scope") == "core" or entry.get(
+                "raci_broadcast_excluded"
+            ) is False:
+                continue
+            if entry.get("raci_broadcast_excluded") is True:
+                excluded.add(agent_id)
+            elif (
+                entry.get("governance_scope") == "plugin"
+                and entry.get("raci_broadcast_excluded") is not False
+            ):
+                excluded.add(agent_id)
     extra = registry.get("raci_broadcast_excluded_agents")
     if isinstance(extra, list):
         excluded.update(str(item) for item in extra)
