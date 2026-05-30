@@ -78,6 +78,12 @@ def _registry_plugin_index(section: dict[str, Any]) -> dict[str, dict[str, Any]]
     }
 
 
+def _skills_payload_registry_checks_reliable(payload: dict[str, Any]) -> bool:
+    """Registry merge is skipped when discovery had errors; do not report drift."""
+    errors = payload.get("errors")
+    return not (isinstance(errors, list) and errors)
+
+
 def _check_skills_payload(
     payload: dict[str, Any],
     check: CapabilityCheck,
@@ -91,6 +97,7 @@ def _check_skills_payload(
 
     reg_skills = _registry_skill_index(registry_section)
     inventory_only = 0
+    check_registry = _skills_payload_registry_checks_reliable(payload)
 
     for record in skills:
         if not isinstance(record, dict):
@@ -103,6 +110,9 @@ def _check_skills_payload(
 
         if not is_active_skill(record):
             inventory_only += 1
+            continue
+
+        if not check_registry:
             continue
 
         name = str(record.get("name") or "?")
