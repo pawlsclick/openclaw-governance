@@ -10,6 +10,8 @@ GOVERNANCE_STATUSES = frozenset(
 
 DEFAULT_CHECK_FAIL_ON = ("undocumented_plugin_enabled",)
 
+FILESYSTEM_SKILL_SOURCES = frozenset({"filesystem-scan", "workspace-scan"})
+
 
 def _normalize_key(value: str) -> str:
     return value.strip().lower()
@@ -27,7 +29,9 @@ def classify_skill_record(
     path_key = _normalize_key(str(record.get("install_path") or ""))
     if name in exempt or path_key in exempt:
         return "exempt"
-    if name in expected or path_key in expected:
+    if path_key in expected:
+        return "expected"
+    if name in expected and str(record.get("source") or "") not in FILESYSTEM_SKILL_SOURCES:
         return "expected"
     if record.get("flags", {}).get("orphan"):
         return "undocumented"

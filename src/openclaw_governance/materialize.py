@@ -654,6 +654,17 @@ def materialize_from_discovery(
     summary.update(artifact_paths)
     effective_write_capabilities = effective_write_inventory and (include_skills or include_plugins)
     if include_skills or include_plugins:
+        capabilities_errors: list[str] = []
+        if include_skills and not config.capabilities.discover_skills:
+            capabilities_errors.append(
+                "--include-skills requested but capabilities.discover_skills is false"
+            )
+        if include_plugins and not config.capabilities.discover_plugins:
+            capabilities_errors.append(
+                "--include-plugins requested but capabilities.discover_plugins is false"
+            )
+        if capabilities_errors:
+            summary["capabilities_errors"] = capabilities_errors
         skills_result = None
         plugins_result = None
         if include_skills and config.capabilities.discover_skills:

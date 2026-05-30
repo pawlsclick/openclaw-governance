@@ -26,7 +26,7 @@ class CapabilitiesConfig:
     expected_plugins: list[str] = field(default_factory=list)
     exempt_skills: list[str] = field(default_factory=list)
     exempt_plugins: list[str] = field(default_factory=list)
-    check_fail_on: list[str] = field(default_factory=lambda: list(DEFAULT_CAPABILITY_CHECK_FAIL_ON))
+    check_fail_on: list[str] | None = None
 
 
 @dataclass
@@ -163,9 +163,15 @@ def load_config(
     exempt_plugins = capabilities_cfg.get("exempt_plugins")
     if not isinstance(exempt_plugins, list):
         exempt_plugins = []
-    check_fail_on = capabilities_cfg.get("check_fail_on")
-    if not isinstance(check_fail_on, list):
-        check_fail_on = list(DEFAULT_CAPABILITY_CHECK_FAIL_ON)
+    if "check_fail_on" in capabilities_cfg:
+        raw_check_fail_on = capabilities_cfg.get("check_fail_on")
+        check_fail_on = (
+            [str(item) for item in raw_check_fail_on]
+            if isinstance(raw_check_fail_on, list)
+            else []
+        )
+    else:
+        check_fail_on = None
 
     capabilities = CapabilitiesConfig(
         discover_skills=bool(capabilities_cfg.get("discover_skills", True)),

@@ -69,7 +69,7 @@ def scan_skill_tree(
             continue
         install_str = shorten_home(str(install))
         name = entry.name
-        in_cli = install_str in cli_paths or name in cli_names
+        in_cli = install_str in cli_paths
         records.append(
             {
                 "name": name,
@@ -119,7 +119,7 @@ def scan_workspace_skills(
 
         install_str = shorten_home(str(install))
         name = entry.name
-        in_cli = install_str in cli_paths or name in cli_names
+        in_cli = install_str in cli_paths
         records.append(
             {
                 "name": name,

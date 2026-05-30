@@ -215,15 +215,19 @@ def cmd_discover(args: argparse.Namespace) -> int:
             promote=args.promote,
             file=sys.stderr,
         )
-        return 0
-
-    print_discovery_report(result)
-    _print_discover_materialization(
-        summary,
-        write=write_registry,
-        staged=args.staged,
-        promote=args.promote,
-    )
+    else:
+        print_discovery_report(result)
+        _print_discover_materialization(
+            summary,
+            write=write_registry,
+            staged=args.staged,
+            promote=args.promote,
+        )
+    capabilities_errors = summary.get("capabilities_errors")
+    if isinstance(capabilities_errors, list) and capabilities_errors:
+        for message in capabilities_errors:
+            print(f"ERROR {message}", file=sys.stderr)
+        return 1
     return 0
 
 

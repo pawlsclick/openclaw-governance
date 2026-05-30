@@ -82,6 +82,19 @@ def _reapply_plugin_governance(payload: dict[str, Any], config: GovernanceConfig
     payload["summary"] = summarize_statuses(plugins)
 
 
+def _check_discovery_payload_errors(payload: dict[str, Any], check: CapabilityCheck, label: str) -> None:
+    errors = payload.get("errors")
+    if not isinstance(errors, list) or not errors:
+        return
+    for item in errors:
+        if isinstance(item, dict):
+            phase = item.get("phase") or label
+            message = item.get("message") or item
+            check.error(f"discovery failed ({phase}): {message}")
+        else:
+            check.error(f"discovery failed ({label}): {item}")
+
+
 def _check_plugins_payload(payload: dict[str, Any], check: CapabilityCheck, fail_on: set[str]) -> None:
     plugins = payload.get("plugins")
     if not isinstance(plugins, list):
@@ -111,9 +124,11 @@ def run_check_capabilities(
     live: bool = False,
 ) -> int:
     check = CapabilityCheck()
-    fail_on = {_normalize_fail_key(item) for item in config.capabilities.check_fail_on}
-    if not fail_on:
+    configured_fail_on = config.capabilities.check_fail_on
+    if configured_fail_on is None:
         fail_on = set(DEFAULT_CHECK_FAIL_ON)
+    else:
+        fail_on = {_normalize_fail_key(item) for item in configured_fail_on}
 
     if skills:
         payload = None
@@ -133,6 +148,7 @@ def run_check_capabilities(
             else:
                 _reapply_skill_governance(payload, config)
         if payload:
+            _check_discovery_payload_errors(payload, check, "skills")
             _check_skills_payload(payload, check, fail_on)
 
     if plugins:
@@ -152,6 +168,7 @@ def run_check_capabilities(
             else:
                 _reapply_plugin_governance(payload, config)
         if payload:
+            _check_discovery_payload_errors(payload, check, "plugins")
             _check_plugins_payload(payload, check, fail_on)
 
     for warning in check.warnings:
