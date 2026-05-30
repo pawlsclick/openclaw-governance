@@ -251,17 +251,19 @@ After `init`, commit the governance root and enable `.github/workflows/governanc
 Install the governance skill so OpenClaw agents get procedural `openclaw-gov` workflows (discover, check, ship, material-change checklist):
 
 ```bash
-clawhub install openclaw-governance
+clawhub install mnemospark-openclaw-governance
 ```
 
-Source in this repo: `skills/openclaw-governance/`. Publish after changes:
+ClawHub slug is **`mnemospark-openclaw-governance`** (slugs starting with `openclaw-` or ending with `-openclaw` are reserved). Source folder in this repo: `skills/openclaw-governance/`.
+
+Publish after changes:
 
 ```bash
 clawhub publish ./skills/openclaw-governance \
-  --slug openclaw-governance \
+  --slug mnemospark-openclaw-governance \
   --name "OpenClaw Governance" \
-  --version 1.0.0 \
-  --changelog "Initial skill: discover, check, ship, brownfield promote"
+  --version 1.1.0 \
+  --changelog "Preflight, three workflows, review feedback"
 ```
 
 Skill format: [docs.openclaw.ai/clawhub/skill-format](https://docs.openclaw.ai/clawhub/skill-format/)
