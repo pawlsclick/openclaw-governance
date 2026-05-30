@@ -764,7 +764,6 @@ def materialize_from_discovery(
                     merge_skills=(
                         skills_result is not None
                         and not skills_blocking
-                        and not skills_errors
                     ),
                     merge_plugins=(
                         plugins_result is not None

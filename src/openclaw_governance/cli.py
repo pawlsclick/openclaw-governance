@@ -299,10 +299,9 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                 return 1
 
     discovery_errors: list | None = None
-    if live:
-        errors = payload.get("errors")
-        if isinstance(errors, list) and errors:
-            discovery_errors = errors
+    errors = payload.get("errors")
+    if isinstance(errors, list) and errors:
+        discovery_errors = errors
 
     def emit_discovery_errors() -> None:
         if discovery_errors is None:
