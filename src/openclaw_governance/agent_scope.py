@@ -13,8 +13,8 @@ AGENT_GOVERNANCE_SCOPE_REFRESH_FIELDS = frozenset({"governance_scope", "raci_bro
 
 def load_plugin_scope_index(
     config: GovernanceConfig,
-) -> tuple[set[str], list[Path]]:
-    """Return plugin ids and resolved root directories from OpenClaw CLI."""
+) -> tuple[set[str], list[Path], bool]:
+    """Return plugin ids, root directories, and whether the CLI index loaded."""
     plugin_ids: set[str] = set()
     plugin_roots: list[Path] = []
     data, err = run_openclaw_json(
@@ -22,10 +22,10 @@ def load_plugin_scope_index(
         timeout_seconds=config.discovery_cron_timeout_seconds,
     )
     if err:
-        return plugin_ids, plugin_roots
+        return plugin_ids, plugin_roots, False
     raw_plugins = data.get("plugins") if isinstance(data, dict) else None
     if not isinstance(raw_plugins, list):
-        return plugin_ids, plugin_roots
+        return plugin_ids, plugin_roots, False
 
     for plugin in raw_plugins:
         if not isinstance(plugin, dict):
@@ -42,7 +42,7 @@ def load_plugin_scope_index(
             except OSError:
                 continue
             break
-    return plugin_ids, plugin_roots
+    return plugin_ids, plugin_roots, True
 
 
 def is_plugin_scoped_agent(

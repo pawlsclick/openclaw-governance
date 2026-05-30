@@ -66,6 +66,7 @@ def merge_agents(
     proposed: list[dict[str, Any]],
     *,
     refresh_discovery_fields: bool = False,
+    plugin_scope_index_available: bool = True,
 ) -> list[dict[str, Any]]:
     """Merge agent entries; preserve hand-authored fields from existing rows."""
     by_id: dict[str, dict[str, Any]] = {}
@@ -90,7 +91,7 @@ def merge_agents(
                     current[key] = value
                 elif key not in current:
                     current[key] = value
-            if not promoted and was_plugin_scoped:
+            if not promoted and was_plugin_scoped and plugin_scope_index_available:
                 proposal_keeps_plugin_scope = item.get("governance_scope") == "plugin"
                 if not proposal_keeps_plugin_scope:
                     current.pop("governance_scope", None)
