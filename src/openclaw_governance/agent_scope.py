@@ -17,10 +17,12 @@ def load_plugin_scope_index(
     """Return plugin ids and resolved root directories from OpenClaw CLI."""
     plugin_ids: set[str] = set()
     plugin_roots: list[Path] = []
-    data, _err = run_openclaw_json(
+    data, err = run_openclaw_json(
         ["plugins", "list", "--json"],
         timeout_seconds=config.discovery_cron_timeout_seconds,
     )
+    if err:
+        raise RuntimeError(err)
     raw_plugins = data.get("plugins") if isinstance(data, dict) else None
     if not isinstance(raw_plugins, list):
         return plugin_ids, plugin_roots

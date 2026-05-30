@@ -81,6 +81,7 @@ def merge_agents(
         if agent_id in by_id:
             current = by_id[agent_id]
             promoted = agent_explicitly_promoted_to_broadcast(current)
+            was_plugin_scoped = current.get("governance_scope") == "plugin"
             for key, value in item.items():
                 if key in discovery_fields:
                     if refresh_discovery_fields or key not in current or current[key] in (None, ""):
@@ -89,6 +90,14 @@ def merge_agents(
                     current[key] = value
                 elif key not in current:
                     current[key] = value
+            if not promoted and was_plugin_scoped:
+                proposal_keeps_plugin_scope = (
+                    item.get("governance_scope") == "plugin"
+                    or item.get("raci_broadcast_excluded") is True
+                )
+                if not proposal_keeps_plugin_scope:
+                    current.pop("governance_scope", None)
+                    current.pop("raci_broadcast_excluded", None)
         else:
             by_id[agent_id] = dict(item)
 
