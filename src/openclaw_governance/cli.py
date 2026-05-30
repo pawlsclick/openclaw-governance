@@ -260,7 +260,8 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                 )
                 return 1
             result = discover(config)
-            payload = discover_skills(config, result.agents, config.capabilities).payload
+            skills_result = discover_skills(config, result.agents, config.capabilities)
+            payload = skills_result.payload
         else:
             payload = load_skills_artifact(config)
             if payload is None:
@@ -281,7 +282,8 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
                 return 1
-            payload = discover_plugins(config, config.capabilities).payload
+            plugins_result = discover_plugins(config, config.capabilities)
+            payload = plugins_result.payload
         else:
             payload = load_plugins_artifact(config)
             if payload is None:
@@ -296,6 +298,17 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                 return 1
 
     sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+    if live:
+        errors = payload.get("errors")
+        if isinstance(errors, list) and errors:
+            for item in errors:
+                if isinstance(item, dict):
+                    phase = item.get("phase", kind)
+                    message = item.get("message", item)
+                    print(f"ERROR discovery failed ({phase}): {message}", file=sys.stderr)
+                else:
+                    print(f"ERROR discovery failed ({kind}): {item}", file=sys.stderr)
+            return 1
     return 0
 
 

@@ -112,6 +112,8 @@ def discover_skills(
         )
 
     for optional_root in capabilities.optional_scan_roots:
+        if not str(optional_root).strip():
+            continue
         root = Path(optional_root).expanduser()
         if root.is_dir():
             workspace_records.extend(

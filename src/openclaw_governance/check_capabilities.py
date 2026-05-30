@@ -52,7 +52,9 @@ def _check_skills_payload(payload: dict[str, Any], check: CapabilityCheck, fail_
                 check.warn(f"undocumented skill: {name}")
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    bundled_undocumented = summary.get("undocumented", 0) - undocumented_material
+    raw_undocumented = summary.get("undocumented", 0)
+    undocumented_total = raw_undocumented if isinstance(raw_undocumented, int) else 0
+    bundled_undocumented = undocumented_total - undocumented_material
     if bundled_undocumented > 0 and "undocumented_skill" not in fail_on:
         check.warn(
             f"{bundled_undocumented} bundled or low-material skills undocumented (summary only)"

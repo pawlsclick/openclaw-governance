@@ -88,14 +88,11 @@ def replace_marked_section(readme: str, new_body: str) -> str:
 
 
 def render_capabilities_summary(config: GovernanceConfig) -> str | None:
-    workflows_dir = config.governance_root / "workflows"
-    skills_path = workflows_dir / "discovered-skills.json"
-    plugins_path = workflows_dir / "discovered-plugins.json"
     skills = load_skills_artifact(config)
     plugins = load_plugins_artifact(config)
     if skills is None and plugins is None:
         return None
-    if (skills_path.is_file() and not skills) or (plugins_path.is_file() and not plugins):
+    if not skills and not plugins:
         return None
 
     lines: list[str] = []

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from openclaw_governance.capability_enrich import shorten_home
+
 GOVERNANCE_STATUSES = frozenset(
     {"expected", "undocumented", "stale", "duplicate", "missing", "exempt"}
 )
@@ -17,6 +19,17 @@ def _normalize_key(value: str) -> str:
     return value.strip().lower()
 
 
+def _normalize_path_key(value: str) -> str:
+    return shorten_home(value.strip()).lower()
+
+
+def _config_lookup_keys(value: str) -> set[str]:
+    stripped = value.strip()
+    if not stripped:
+        return set()
+    return {_normalize_key(stripped), _normalize_path_key(stripped)}
+
+
 def classify_skill_record(
     record: dict[str, Any],
     *,
@@ -27,7 +40,7 @@ def classify_skill_record(
     if flags.get("duplicate_of"):
         return "duplicate"
     name = _normalize_key(str(record.get("name") or ""))
-    path_key = _normalize_key(str(record.get("install_path") or ""))
+    path_key = _normalize_path_key(str(record.get("install_path") or ""))
     if name in exempt or path_key in exempt:
         return "exempt"
     if path_key in expected:
@@ -61,8 +74,12 @@ def apply_skill_governance_statuses(
     expected: set[str],
     exempt: set[str],
 ) -> None:
-    expected_norm = {_normalize_key(item) for item in expected}
-    exempt_norm = {_normalize_key(item) for item in exempt}
+    expected_norm: set[str] = set()
+    exempt_norm: set[str] = set()
+    for item in expected:
+        expected_norm |= _config_lookup_keys(item)
+    for item in exempt:
+        exempt_norm |= _config_lookup_keys(item)
     for record in skills:
         if not isinstance(record, dict):
             continue

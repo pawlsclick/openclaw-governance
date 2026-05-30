@@ -14,8 +14,6 @@ from openclaw_governance.registry_common import DEFAULT_DOMAIN_PREFIX_RULES
 DEFAULT_CRON_TIMEOUT_SECONDS = 45
 MAX_CRON_TIMEOUT_SECONDS = 120
 
-DEFAULT_CAPABILITY_CHECK_FAIL_ON = ("undocumented_plugin_enabled",)
-
 
 @dataclass
 class CapabilitiesConfig:

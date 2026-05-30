@@ -683,7 +683,7 @@ def materialize_from_discovery(
                 capabilities_errors.append(f"{phase}: {message}")
         if capabilities_errors:
             summary["capabilities_errors"] = capabilities_errors
-        if effective_write_capabilities:
+        if effective_write_capabilities and not capabilities_errors:
             summary.update(
                 write_capability_artifacts(
                     config,
