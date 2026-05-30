@@ -22,7 +22,6 @@ CAPABILITY_DISCOVERY_REFRESH_FIELDS = (
     "enabled",
     "agent_id",
     "plugin_id",
-    "discovered_at",
     "governance_status",
 )
 
@@ -174,12 +173,15 @@ def _merge_capability_list(
                     if field in entry:
                         current[field] = entry[field]
                 continue
+            changed = False
             for field in CAPABILITY_DISCOVERY_REFRESH_FIELDS:
                 if field in PROTECTED_CAPABILITY_FIELDS and _capability_is_protected(current):
                     continue
-                if field in entry:
+                if field in entry and current.get(field) != entry[field]:
                     current[field] = entry[field]
-            updated.append(entry_id)
+                    changed = True
+            if changed:
+                updated.append(entry_id)
         else:
             new_entry = dict(entry)
             if staged:
