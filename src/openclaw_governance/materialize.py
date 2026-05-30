@@ -654,13 +654,14 @@ def materialize_from_discovery(
     summary.update(artifact_paths)
     effective_write_capabilities = effective_write_inventory and (include_skills or include_plugins)
     if include_skills or include_plugins:
-        capabilities_errors: list[str] = []
+        skills_errors: list[str] = []
+        plugins_errors: list[str] = []
         if include_skills and not config.capabilities.discover_skills:
-            capabilities_errors.append(
+            skills_errors.append(
                 "--include-skills requested but capabilities.discover_skills is false"
             )
         if include_plugins and not config.capabilities.discover_plugins:
-            capabilities_errors.append(
+            plugins_errors.append(
                 "--include-plugins requested but capabilities.discover_plugins is false"
             )
         skills_result = None
@@ -672,7 +673,7 @@ def materialize_from_discovery(
             for err in skills_result.errors:
                 phase = err.get("phase", "skills") if isinstance(err, dict) else "skills"
                 message = err.get("message", err) if isinstance(err, dict) else err
-                capabilities_errors.append(f"{phase}: {message}")
+                skills_errors.append(f"{phase}: {message}")
         if include_plugins and config.capabilities.discover_plugins:
             plugins_result = discover_plugins(config, config.capabilities)
             summary["plugins_summary"] = plugins_result.payload.get("summary")
@@ -680,18 +681,31 @@ def materialize_from_discovery(
             for err in plugins_result.errors:
                 phase = err.get("phase", "plugins") if isinstance(err, dict) else "plugins"
                 message = err.get("message", err) if isinstance(err, dict) else err
-                capabilities_errors.append(f"{phase}: {message}")
+                plugins_errors.append(f"{phase}: {message}")
+        capabilities_errors = skills_errors + plugins_errors
         if capabilities_errors:
             summary["capabilities_errors"] = capabilities_errors
-        if effective_write_capabilities and not capabilities_errors:
+        write_skills = (
+            effective_write_capabilities
+            and include_skills
+            and not skills_errors
+            and skills_result is not None
+        )
+        write_plugins = (
+            effective_write_capabilities
+            and include_plugins
+            and not plugins_errors
+            and plugins_result is not None
+        )
+        if write_skills or write_plugins:
             summary.update(
                 write_capability_artifacts(
                     config,
-                    skills=skills_result,
-                    plugins=plugins_result,
+                    skills=skills_result if write_skills else None,
+                    plugins=plugins_result if write_plugins else None,
                 )
             )
-        elif skills_result or plugins_result:
+        elif (skills_result or plugins_result) and not effective_write_capabilities:
             summary["capabilities_read_only"] = (
                 "Capability scan complete; use --inventory or --staged to write "
                 "discovered-skills.json / discovered-plugins.json."

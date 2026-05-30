@@ -87,9 +87,25 @@ def replace_marked_section(readme: str, new_body: str) -> str:
     return pattern.sub(replacement, readme, count=1)
 
 
+def _capability_artifact_path(config: GovernanceConfig, name: str) -> Path:
+    return config.governance_root / "workflows" / name
+
+
+def _capability_artifact_invalid(path: Path, payload: dict[str, Any] | None, array_key: str) -> bool:
+    if not path.is_file():
+        return False
+    return not payload or not isinstance(payload.get(array_key), list)
+
+
 def render_capabilities_summary(config: GovernanceConfig) -> str | None:
+    skills_path = _capability_artifact_path(config, "discovered-skills.json")
+    plugins_path = _capability_artifact_path(config, "discovered-plugins.json")
     skills = load_skills_artifact(config)
     plugins = load_plugins_artifact(config)
+    if _capability_artifact_invalid(skills_path, skills, "skills"):
+        return None
+    if _capability_artifact_invalid(plugins_path, plugins, "plugins"):
+        return None
     if skills is None and plugins is None:
         return None
     if not skills and not plugins:
@@ -98,7 +114,7 @@ def render_capabilities_summary(config: GovernanceConfig) -> str | None:
     lines: list[str] = []
     lines.append("Capability inventory snapshots (from committed discovered-*.json):")
     lines.append("")
-    if skills:
+    if skills and isinstance(skills.get("skills"), list):
         _reapply_skill_governance(skills, config)
         summary = skills.get("summary") if isinstance(skills.get("summary"), dict) else {}
         lines.append(
@@ -106,7 +122,7 @@ def render_capabilities_summary(config: GovernanceConfig) -> str | None:
             f"{summary.get('undocumented', 0)} undocumented, "
             f"{summary.get('expected', 0)} expected"
         )
-    if plugins:
+    if plugins and isinstance(plugins.get("plugins"), list):
         _reapply_plugin_governance(plugins, config)
         summary = plugins.get("summary") if isinstance(plugins.get("summary"), dict) else {}
         lines.append(
@@ -182,6 +198,12 @@ def run_regen_summary(
                 capabilities_generated,
             )
             if cap_updated is None:
+                if check:
+                    print(
+                        f"ERROR README missing {CAPABILITIES_BEGIN} / {CAPABILITIES_END} markers; "
+                        "run: openclaw-gov regen --write --include-capabilities"
+                    )
+                    return 1
                 print(
                     f"WARN README missing {CAPABILITIES_BEGIN} markers; "
                     "capabilities summary not written"
