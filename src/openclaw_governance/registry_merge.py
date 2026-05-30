@@ -265,6 +265,7 @@ def merge_registry_for_adopt(
         target_agents,
         source_agents,
         refresh_discovery_fields=source_authoritative,
+        plugin_scope_index_available=False,
     )
     sections_merged.append("agents")
 

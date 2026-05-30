@@ -116,6 +116,10 @@ def agents_excluded_from_raci_broadcast(registry: dict[str, Any]) -> set[str]:
             agent_id = entry.get("id")
             if not isinstance(agent_id, str) or not agent_id:
                 continue
+            if entry.get("governance_scope") == "core" or entry.get(
+                "raci_broadcast_excluded"
+            ) is False:
+                continue
             if entry.get("raci_broadcast_excluded") is True:
                 excluded.add(agent_id)
             elif (
