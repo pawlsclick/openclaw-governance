@@ -7,6 +7,7 @@ from typing import Any
 
 import yaml
 
+from openclaw_governance.agent_scope import agent_explicitly_promoted_to_broadcast
 from openclaw_governance.config import GovernanceConfig
 from openclaw_governance.registry_common import (
     UniqueKeyLoader,
@@ -40,7 +41,10 @@ def render_agent_catalog(agents: list[dict[str, Any]]) -> list[str]:
         name = entry.get("name", "")
         role = entry.get("role", "")
         workspace = str(entry.get("workspace", "")).replace("|", "\\|")
-        if entry.get("governance_scope") == "plugin":
+        if (
+            entry.get("governance_scope") == "plugin"
+            and not agent_explicitly_promoted_to_broadcast(entry)
+        ):
             role = f"{role} (plugin-scoped; excluded from platform RACI broadcasts)"
         elif entry.get("raci_broadcast_excluded") is True:
             role = f"{role} (cron-only; excluded from cross-agent RACI broadcasts)"

@@ -91,13 +91,11 @@ def merge_agents(
                 elif key not in current:
                     current[key] = value
             if not promoted and was_plugin_scoped:
-                proposal_keeps_plugin_scope = (
-                    item.get("governance_scope") == "plugin"
-                    or item.get("raci_broadcast_excluded") is True
-                )
+                proposal_keeps_plugin_scope = item.get("governance_scope") == "plugin"
                 if not proposal_keeps_plugin_scope:
                     current.pop("governance_scope", None)
-                    current.pop("raci_broadcast_excluded", None)
+                    if item.get("raci_broadcast_excluded") is not True:
+                        current.pop("raci_broadcast_excluded", None)
         else:
             by_id[agent_id] = dict(item)
 

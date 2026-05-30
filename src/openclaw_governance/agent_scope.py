@@ -22,7 +22,7 @@ def load_plugin_scope_index(
         timeout_seconds=config.discovery_cron_timeout_seconds,
     )
     if err:
-        raise RuntimeError(err)
+        return plugin_ids, plugin_roots
     raw_plugins = data.get("plugins") if isinstance(data, dict) else None
     if not isinstance(raw_plugins, list):
         return plugin_ids, plugin_roots
