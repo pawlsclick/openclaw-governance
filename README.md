@@ -246,6 +246,26 @@ After `init`, commit the governance root and enable `.github/workflows/governanc
 
 **Existing governance repos:** `init` does not overwrite a workflow file already on disk. After upgrading to v0.5.5, manually bump the install pin in your repo's `.github/workflows/governance-drift.yml` (see [migrating guide](docs/migrating-existing-governance.md#ci-workflow-pin-existing-governance-repos)).
 
+## Agent skill (ClawHub)
+
+Install the governance skill so OpenClaw agents get procedural `openclaw-gov` workflows (discover, check, ship, material-change checklist):
+
+```bash
+clawhub install openclaw-governance
+```
+
+Source in this repo: `skills/openclaw-governance/`. Publish after changes:
+
+```bash
+clawhub publish ./skills/openclaw-governance \
+  --slug openclaw-governance \
+  --name "OpenClaw Governance" \
+  --version 1.0.0 \
+  --changelog "Initial skill: discover, check, ship, brownfield promote"
+```
+
+Skill format: [docs.openclaw.ai/clawhub/skill-format](https://docs.openclaw.ai/clawhub/skill-format/)
+
 ## License
 
 MIT
