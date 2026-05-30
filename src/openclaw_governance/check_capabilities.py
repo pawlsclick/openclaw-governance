@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import yaml
+
 from openclaw_governance.capability_governance import (
     DEFAULT_CHECK_FAIL_ON,
     apply_plugin_governance_statuses,
@@ -41,14 +43,22 @@ class CapabilityCheck:
         self.warnings.append(f"WARN {message}")
 
 
-def _load_registry_capabilities(config: GovernanceConfig) -> dict[str, Any]:
+def _load_registry_capabilities(config: GovernanceConfig, check: CapabilityCheck) -> dict[str, Any]:
     path = config.registry_path
+    empty: dict[str, Any] = {"schema_version": 1, "skills": [], "plugins": []}
     if not path.is_file():
-        return {"schema_version": 1, "skills": [], "plugins": []}
+        return empty
     try:
         registry = load_registry(path)
-    except OSError:
-        return {"schema_version": 1, "skills": [], "plugins": []}
+    except OSError as exc:
+        check.error(f"{path} cannot be read: {exc}")
+        return empty
+    except yaml.YAMLError as exc:
+        check.error(f"{path} does not parse as YAML: {exc}")
+        return empty
+    except ValueError as exc:
+        check.error(str(exc))
+        return empty
     return _capabilities_section(registry)
 
 
@@ -228,7 +238,7 @@ def run_check_capabilities(
     else:
         fail_on = {_normalize_fail_key(item) for item in configured_fail_on}
 
-    registry_section = _load_registry_capabilities(config)
+    registry_section = _load_registry_capabilities(config, check)
 
     if skills:
         payload = None
