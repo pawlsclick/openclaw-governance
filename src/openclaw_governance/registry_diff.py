@@ -27,7 +27,7 @@ def registry_semantic_diff(
     for key in sorted(set(before) | set(after)):
         if key in skip_keys:
             continue
-        if key in {"workflows", "agents", "raci_domains"}:
+        if key in {"workflows", "agents", "raci_domains", "capabilities"}:
             continue
         if _normalize(before.get(key)) != _normalize(after.get(key)):
             changes["top_level"].append(key)
@@ -69,5 +69,11 @@ def registry_semantic_diff(
         if _normalize(before_workflows.get(workflow_id)) != _normalize(after_workflows.get(workflow_id)):
             changes["workflows"].append(workflow_id)
             changes["changed"] = True
+
+    before_caps = before.get("capabilities") if isinstance(before.get("capabilities"), dict) else {}
+    after_caps = after.get("capabilities") if isinstance(after.get("capabilities"), dict) else {}
+    if _normalize(before_caps) != _normalize(after_caps):
+        changes["capabilities"] = True
+        changes["changed"] = True
 
     return changes

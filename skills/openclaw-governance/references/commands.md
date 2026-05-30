@@ -1,6 +1,6 @@
 # openclaw-gov command reference
 
-Pin: **v0.6.3**. Pass `--root PATH` on every command when not using default resolution.
+Pin: **v0.7.0**. Pass `--root PATH` on every command when not using default resolution.
 
 | Command | Mutates files? | Description |
 |---------|----------------|-------------|
@@ -18,6 +18,8 @@ Pin: **v0.6.3**. Pass `--root PATH` on every command when not using default reso
 | `discover --json` | No | JSON on stdout; human report on stderr |
 | `discover --staged` | Yes (inventory + candidates) | No registry mutation |
 | `discover --promote` | Yes | Apply staged merge when semantic diff |
+| `discover --promote --include-skills --include-plugins` | Yes | Promote workflows + write `registry.yaml` capabilities (active only) |
+| `discover --staged --include-skills --include-plugins` | Yes (inventory + candidates) | Capability buckets in `discovery-candidates.json` |
 | `discover --promote --allowlist PATH` | Yes | Promote listed workflow ids only |
 | `discover --write` | Yes | Registry + runbook stubs (legacy/greenfield) |
 | `discover --include-runtime-metrics` | Yes | Volatile timings file (gitignored) |

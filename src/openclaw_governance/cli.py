@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -297,7 +298,12 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                 print("ERROR discovered-plugins.json is invalid or empty", file=sys.stderr)
                 return 1
 
-    sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+    try:
+        sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+    except BrokenPipeError:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        return 0
     if live:
         errors = payload.get("errors")
         if isinstance(errors, list) and errors:
