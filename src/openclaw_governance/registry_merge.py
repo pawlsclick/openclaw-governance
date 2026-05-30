@@ -89,7 +89,9 @@ def merge_agents(
                         current[key] = value
                 elif key in AGENT_GOVERNANCE_SCOPE_REFRESH_FIELDS and not promoted:
                     current[key] = value
-                elif key not in current:
+                elif key not in current and not (
+                    promoted and key in AGENT_GOVERNANCE_SCOPE_REFRESH_FIELDS
+                ):
                     current[key] = value
             if not promoted and was_plugin_scoped and plugin_scope_index_available:
                 proposal_keeps_plugin_scope = item.get("governance_scope") == "plugin"
