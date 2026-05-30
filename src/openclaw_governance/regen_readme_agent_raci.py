@@ -40,7 +40,9 @@ def render_agent_catalog(agents: list[dict[str, Any]]) -> list[str]:
         name = entry.get("name", "")
         role = entry.get("role", "")
         workspace = str(entry.get("workspace", "")).replace("|", "\\|")
-        if entry.get("raci_broadcast_excluded") is True:
+        if entry.get("governance_scope") == "plugin":
+            role = f"{role} (plugin-scoped; excluded from platform RACI broadcasts)"
+        elif entry.get("raci_broadcast_excluded") is True:
             role = f"{role} (cron-only; excluded from cross-agent RACI broadcasts)"
         lines.append(f"| `{agent_id}` | {name} | {role} | `{workspace}` |")
     lines.append("")

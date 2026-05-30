@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from openclaw_governance.agent_scope import (
+    AGENT_GOVERNANCE_SCOPE_REFRESH_FIELDS,
+    agent_explicitly_promoted_to_broadcast,
+)
 from openclaw_governance.registry_common import VALID_WORKFLOW_STATUSES
 
 # Operator-promoted workflows: discover must not overwrite hand-authored fields.
@@ -76,10 +80,13 @@ def merge_agents(
         agent_id = str(item["id"])
         if agent_id in by_id:
             current = by_id[agent_id]
+            promoted = agent_explicitly_promoted_to_broadcast(current)
             for key, value in item.items():
                 if key in discovery_fields:
                     if refresh_discovery_fields or key not in current or current[key] in (None, ""):
                         current[key] = value
+                elif key in AGENT_GOVERNANCE_SCOPE_REFRESH_FIELDS and not promoted:
+                    current[key] = value
                 elif key not in current:
                     current[key] = value
         else:

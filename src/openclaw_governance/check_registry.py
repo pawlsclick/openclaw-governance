@@ -255,7 +255,8 @@ def check_agents_and_raci_domains(registry: dict[str, Any], check: Check, config
             extra = sorted(informed & broadcast_excluded)
             check.require(
                 not missing,
-                f"{context}.informed must include all broadcast agents; missing: {', '.join(missing)}",
+                f"{context}.informed must include all broadcast agents; missing: {', '.join(missing)} "
+                "(plugin-scoped agents default out; set governance_scope: core to promote)",
             )
             check.require(
                 not extra,
