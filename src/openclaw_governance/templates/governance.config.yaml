@@ -37,6 +37,16 @@ discovery:
 require_readme_markers: true
 finance_agent_owner_check: false
 
+# Plugin and skill capability inventory (v0.6.0+)
+# capabilities:
+#   expected_skills: []
+#   expected_plugins: []
+#   exempt_skills: []
+#   exempt_plugins: []
+#   optional_scan_roots: []
+#   check_fail_on:
+#     - undocumented_plugin_enabled
+
 # Optional: override automatic RACI domain prefix rules (replaces built-in defaults).
 # By default, discover --write creates one ops domain per discovered agent
 # (agent id with hyphens -> underscores + "_ops", e.g. billing-bot -> billing_bot_ops)

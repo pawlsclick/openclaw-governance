@@ -27,6 +27,9 @@ from openclaw_governance.candidates import (
     build_discovery_candidates,
     filter_proposed_by_allowlist,
 )
+from openclaw_governance.discover_plugins import discover_plugins
+from openclaw_governance.discover_skills import discover_skills
+from openclaw_governance.inventory_artifacts import write_capability_artifacts
 from openclaw_governance.registry_diff import registry_semantic_diff
 from openclaw_governance.registry_merge import (
     PROTECTED_WORKFLOW_STATUSES,
@@ -501,6 +504,8 @@ def materialize_from_discovery(
     allowlist: set[str] | None = None,
     write_inventory: bool = False,
     include_runtime_metrics: bool = False,
+    include_skills: bool = False,
+    include_plugins: bool = False,
 ) -> dict[str, Any]:
     """Build or update registry + runbooks. Returns summary dict."""
     write_registry = write or promote
@@ -647,6 +652,31 @@ def materialize_from_discovery(
         include_runtime_metrics=include_runtime_metrics,
     )
     summary.update(artifact_paths)
+    effective_write_capabilities = effective_write_inventory and (include_skills or include_plugins)
+    if include_skills or include_plugins:
+        skills_result = None
+        plugins_result = None
+        if include_skills and config.capabilities.discover_skills:
+            skills_result = discover_skills(config, result.agents, config.capabilities)
+            summary["skills_summary"] = skills_result.payload.get("summary")
+            summary["skills_warnings"] = skills_result.warnings
+        if include_plugins and config.capabilities.discover_plugins:
+            plugins_result = discover_plugins(config, config.capabilities)
+            summary["plugins_summary"] = plugins_result.payload.get("summary")
+            summary["plugins_warnings"] = plugins_result.warnings
+        if effective_write_capabilities:
+            summary.update(
+                write_capability_artifacts(
+                    config,
+                    skills=skills_result,
+                    plugins=plugins_result,
+                )
+            )
+        elif skills_result or plugins_result:
+            summary["capabilities_read_only"] = (
+                "Capability scan complete; use --inventory or --staged to write "
+                "discovered-skills.json / discovered-plugins.json."
+            )
     summary["read_only"] = (
         not effective_write_inventory
         and not include_runtime_metrics

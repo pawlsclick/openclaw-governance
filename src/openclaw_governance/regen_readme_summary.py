@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from openclaw_governance.config import GovernanceConfig
+from openclaw_governance.inventory_artifacts import load_plugins_artifact, load_skills_artifact
 from openclaw_governance.registry_common import UniqueKeyLoader, construct_mapping_without_duplicate_keys, load_registry
 
 UniqueKeyLoader.add_constructor(
@@ -21,6 +22,8 @@ VALID_RUNTIME_STATUSES = ("active", "manual", "disabled")
 
 BEGIN_MARKER = "<!-- governance:workflow-summary:begin -->"
 END_MARKER = "<!-- governance:workflow-summary:end -->"
+CAPABILITIES_BEGIN = "<!-- governance:capabilities-summary:begin -->"
+CAPABILITIES_END = "<!-- governance:capabilities-summary:end -->"
 
 
 def runbook_link(runbook: str) -> str:
@@ -80,7 +83,51 @@ def replace_marked_section(readme: str, new_body: str) -> str:
     return pattern.sub(replacement, readme, count=1)
 
 
-def run_regen_summary(config: GovernanceConfig, *, write: bool = False, check: bool = False) -> int:
+def render_capabilities_summary(config: GovernanceConfig) -> str | None:
+    skills = load_skills_artifact(config)
+    plugins = load_plugins_artifact(config)
+    if skills is None and plugins is None:
+        return None
+
+    lines: list[str] = []
+    lines.append("Capability inventory snapshots (from committed discovered-*.json):")
+    lines.append("")
+    if skills and isinstance(skills.get("summary"), dict):
+        summary = skills["summary"]
+        lines.append(
+            f"- Skills: {summary.get('total', 0)} total, "
+            f"{summary.get('undocumented', 0)} undocumented, "
+            f"{summary.get('expected', 0)} expected"
+        )
+    if plugins and isinstance(plugins.get("summary"), dict):
+        summary = plugins["summary"]
+        lines.append(
+            f"- Plugins: {summary.get('total', 0)} total, "
+            f"{summary.get('undocumented', 0)} undocumented, "
+            f"{summary.get('expected', 0)} expected"
+        )
+    lines.append("")
+    lines.append(
+        "Refresh with `openclaw-gov discover --staged --include-skills --include-plugins`."
+    )
+    return "\n".join(lines) + "\n"
+
+
+def replace_optional_marked_section(readme: str, begin: str, end: str, new_body: str) -> str | None:
+    pattern = re.compile(re.escape(begin) + r".*?" + re.escape(end), flags=re.DOTALL)
+    if not pattern.search(readme):
+        return None
+    replacement = f"{begin}\n{new_body}{end}"
+    return pattern.sub(replacement, readme, count=1)
+
+
+def run_regen_summary(
+    config: GovernanceConfig,
+    *,
+    write: bool = False,
+    check: bool = False,
+    include_capabilities: bool = False,
+) -> int:
     root = config.governance_root
     registry_path = config.registry_path
     readme_path = config.readme_path
@@ -104,6 +151,26 @@ def run_regen_summary(config: GovernanceConfig, *, write: bool = False, check: b
     except ValueError as exc:
         print(f"ERROR {exc}")
         return 1
+
+    capabilities_generated: str | None = None
+    if include_capabilities:
+        capabilities_generated = render_capabilities_summary(config)
+        if capabilities_generated is None:
+            print("WARN no discovered-skills.json or discovered-plugins.json; skipping capabilities summary")
+        else:
+            cap_updated = replace_optional_marked_section(
+                updated,
+                CAPABILITIES_BEGIN,
+                CAPABILITIES_END,
+                capabilities_generated,
+            )
+            if cap_updated is None:
+                print(
+                    f"WARN README missing {CAPABILITIES_BEGIN} markers; "
+                    "capabilities summary not written"
+                )
+            else:
+                updated = cap_updated
 
     if write:
         readme_path.write_text(updated, encoding="utf-8")

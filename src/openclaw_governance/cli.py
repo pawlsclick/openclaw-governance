@@ -9,12 +9,15 @@ from pathlib import Path
 
 from openclaw_governance import __version__
 from openclaw_governance.adopt import run_adopt
+from openclaw_governance.check_capabilities import run_check_capabilities
 from openclaw_governance.check_registry import run_check
 from openclaw_governance.config import load_config
 from openclaw_governance.discover import discover, print_discovery_report
 from openclaw_governance.doctor import run_doctor
 from openclaw_governance.init_cmd import run_init
 from openclaw_governance.inject_agents import run_inject
+from openclaw_governance.discover_plugins import discover_plugins
+from openclaw_governance.discover_skills import discover_skills
 from openclaw_governance.materialize import materialize_from_discovery
 from openclaw_governance.paths import default_governance_root, default_openclaw_home, resolve_governance_root
 from openclaw_governance.regen_readme_agent_raci import run_regen_raci
@@ -80,6 +83,16 @@ def _print_discover_materialization(
     out = sys.stdout if file is None else file
     if summary.get("promote_hint"):
         print(summary["promote_hint"], file=out)
+    if summary.get("plugins_inventory_path"):
+        print(f"plugins inventory: {summary.get('plugins_inventory_path')}", file=out)
+    if summary.get("skills_inventory_path"):
+        print(f"skills inventory: {summary.get('skills_inventory_path')}", file=out)
+    if summary.get("skills_summary"):
+        print(f"skills summary: {summary.get('skills_summary')}", file=out)
+    if summary.get("plugins_summary"):
+        print(f"plugins summary: {summary.get('plugins_summary')}", file=out)
+    if summary.get("capabilities_read_only"):
+        print(summary["capabilities_read_only"], file=out)
     if summary.get("inventory_path"):
         print(f"inventory: {summary.get('inventory_path')}", file=out)
     if summary.get("runtime_path"):
@@ -185,6 +198,8 @@ def cmd_discover(args: argparse.Namespace) -> int:
         allowlist=allowlist,
         write_inventory=args.inventory,
         include_runtime_metrics=include_runtime_metrics,
+        include_skills=args.include_skills,
+        include_plugins=args.include_plugins,
     )
 
     if args.json:
@@ -212,12 +227,63 @@ def cmd_discover(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    return run_check(resolve_config(args))
+    config = resolve_config(args)
+    code = run_check(config)
+    if code != 0:
+        return code
+    if args.skills or args.plugins:
+        return run_check_capabilities(
+            config,
+            skills=args.skills,
+            plugins=args.plugins,
+            live=getattr(args, "live", False),
+        )
+    return code
+
+
+def cmd_inventory(args: argparse.Namespace) -> int:
+    config = resolve_config(args)
+    kind = args.inventory_kind
+    live = getattr(args, "live", False)
+
+    if kind == "skills":
+        if live:
+            result = discover(config)
+            payload = discover_skills(config, result.agents, config.capabilities).payload
+        else:
+            payload = load_skills_artifact(config)
+            if payload is None:
+                print(
+                    "ERROR discovered-skills.json missing; run discover --inventory --include-skills "
+                    "or pass --live",
+                    file=sys.stderr,
+                )
+                return 1
+    else:
+        if live:
+            payload = discover_plugins(config, config.capabilities).payload
+        else:
+            payload = load_plugins_artifact(config)
+            if payload is None:
+                print(
+                    "ERROR discovered-plugins.json missing; run discover --inventory --include-plugins "
+                    "or pass --live",
+                    file=sys.stderr,
+                )
+                return 1
+
+    sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+    return 0
 
 
 def cmd_regen(args: argparse.Namespace) -> int:
     config = resolve_config(args)
-    code = run_regen_summary(config, write=args.write, check=args.check)
+    code = run_regen_summary(
+        config,
+        write=args.write,
+        check=args.check,
+        include_capabilities=getattr(args, "include_capabilities", False),
+    )
     if code != 0:
         return code
     return run_regen_raci(config, write=args.write, check=args.check)
@@ -399,13 +465,39 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     discover_parser.add_argument("--json", action="store_true", help="Print inventory JSON to stdout")
+    discover_parser.add_argument(
+        "--include-skills",
+        action="store_true",
+        help="Discover installed skills (writes artifacts with --inventory or --staged)",
+    )
+    discover_parser.add_argument(
+        "--include-plugins",
+        action="store_true",
+        help="Discover installed plugins (writes artifacts with --inventory or --staged)",
+    )
     discover_parser.set_defaults(func=cmd_discover)
 
-    sub.add_parser(
+    check_parser = sub.add_parser(
         "check",
         parents=[common],
         help="Validate registry, runbooks, and README markers",
-    ).set_defaults(func=cmd_check)
+    )
+    check_parser.add_argument(
+        "--skills",
+        action="store_true",
+        help="Also check discovered-skills.json drift (warn by default for skills)",
+    )
+    check_parser.add_argument(
+        "--plugins",
+        action="store_true",
+        help="Also check discovered-plugins.json drift (fail on enabled undocumented plugins)",
+    )
+    check_parser.add_argument(
+        "--live",
+        action="store_true",
+        help="With --skills/--plugins: classify live discovery instead of committed artifacts",
+    )
+    check_parser.set_defaults(func=cmd_check)
 
     regen_parser = sub.add_parser(
         "regen",
@@ -414,7 +506,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     regen_parser.add_argument("--write", action="store_true")
     regen_parser.add_argument("--check", action="store_true")
+    regen_parser.add_argument(
+        "--include-capabilities",
+        action="store_true",
+        help="Include compact capability counts from committed discovered-*.json in README",
+    )
     regen_parser.set_defaults(func=cmd_regen)
+
+    inventory_parser = sub.add_parser(
+        "inventory",
+        parents=[common],
+        help="Print capability inventory JSON from artifacts or live discovery",
+    )
+    inventory_sub = inventory_parser.add_subparsers(dest="inventory_kind", required=True)
+    for kind in ("skills", "plugins"):
+        kind_parser = inventory_sub.add_parser(
+            kind,
+            parents=[common],
+            help=f"Print discovered-{kind}.json payload",
+        )
+        kind_parser.add_argument(
+            "--live",
+            action="store_true",
+            help=f"Run live discovery instead of reading workflows/discovered-{kind}.json",
+        )
+        kind_parser.add_argument("--json", action="store_true", help="Print JSON (default)")
+        kind_parser.set_defaults(func=cmd_inventory, inventory_kind=kind)
 
     inject_parser = sub.add_parser(
         "inject-agents",
