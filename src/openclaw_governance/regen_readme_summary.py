@@ -9,6 +9,10 @@ from typing import Any
 
 import yaml
 
+from openclaw_governance.check_capabilities import (
+    _reapply_plugin_governance,
+    _reapply_skill_governance,
+)
 from openclaw_governance.config import GovernanceConfig
 from openclaw_governance.inventory_artifacts import load_plugins_artifact, load_skills_artifact
 from openclaw_governance.registry_common import UniqueKeyLoader, construct_mapping_without_duplicate_keys, load_registry
@@ -97,15 +101,17 @@ def render_capabilities_summary(config: GovernanceConfig) -> str | None:
     lines: list[str] = []
     lines.append("Capability inventory snapshots (from committed discovered-*.json):")
     lines.append("")
-    if skills and isinstance(skills.get("summary"), dict):
-        summary = skills["summary"]
+    if skills:
+        _reapply_skill_governance(skills, config)
+        summary = skills.get("summary") if isinstance(skills.get("summary"), dict) else {}
         lines.append(
             f"- Skills: {summary.get('total', 0)} total, "
             f"{summary.get('undocumented', 0)} undocumented, "
             f"{summary.get('expected', 0)} expected"
         )
-    if plugins and isinstance(plugins.get("summary"), dict):
-        summary = plugins["summary"]
+    if plugins:
+        _reapply_plugin_governance(plugins, config)
+        summary = plugins.get("summary") if isinstance(plugins.get("summary"), dict) else {}
         lines.append(
             f"- Plugins: {summary.get('total', 0)} total, "
             f"{summary.get('undocumented', 0)} undocumented, "

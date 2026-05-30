@@ -69,7 +69,7 @@ def scan_skill_tree(
             continue
         install_str = shorten_home(str(install))
         name = entry.name
-        in_cli = install_str in cli_paths
+        in_cli = install_str in cli_paths or name in cli_names
         records.append(
             {
                 "name": name,
@@ -119,7 +119,7 @@ def scan_workspace_skills(
 
         install_str = shorten_home(str(install))
         name = entry.name
-        in_cli = install_str in cli_paths
+        in_cli = install_str in cli_paths or name in cli_names
         records.append(
             {
                 "name": name,
@@ -149,7 +149,8 @@ def mark_duplicate_skills(skills: list[dict[str, Any]]) -> None:
         except OSError:
             resolved = str(raw_path)
         if resolved in by_realpath:
-            record.setdefault("flags", {})
+            if not isinstance(record.get("flags"), dict):
+                record["flags"] = {}
             record["flags"]["duplicate_of"] = by_realpath[resolved]
         else:
             by_realpath[resolved] = str(record.get("name") or resolved)

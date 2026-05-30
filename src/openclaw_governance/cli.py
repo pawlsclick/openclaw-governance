@@ -253,6 +253,12 @@ def cmd_inventory(args: argparse.Namespace) -> int:
 
     if kind == "skills":
         if live:
+            if not config.capabilities.discover_skills:
+                print(
+                    "ERROR inventory skills --live requested but capabilities.discover_skills is false",
+                    file=sys.stderr,
+                )
+                return 1
             result = discover(config)
             payload = discover_skills(config, result.agents, config.capabilities).payload
         else:
@@ -269,6 +275,12 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                 return 1
     else:
         if live:
+            if not config.capabilities.discover_plugins:
+                print(
+                    "ERROR inventory plugins --live requested but capabilities.discover_plugins is false",
+                    file=sys.stderr,
+                )
+                return 1
             payload = discover_plugins(config, config.capabilities).payload
         else:
             payload = load_plugins_artifact(config)
