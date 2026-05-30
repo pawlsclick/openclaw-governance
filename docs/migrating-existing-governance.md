@@ -5,7 +5,7 @@ Use this guide when you already have a governance repository with hand-authored 
 ## Prerequisites
 
 - OpenClaw installed with `openclaw.json` listing your agents
-- `openclaw-gov` v0.5.2+ installed ([README](../README.md))
+- `openclaw-gov` v0.5.5+ installed ([README](../README.md))
 - A backup or git commit of your governance repo before merging
 
 ## Recommended migration flow
@@ -23,12 +23,15 @@ openclaw-gov doctor --validate-config --root ~/.openclaw/governance
 # 4. Registry and runbook checks
 openclaw-gov check --root ~/.openclaw/governance
 
-# 5. Discover inventory (machine-readable JSON on stdout)
+# 5. Discover inventory (read-only console; machine-readable JSON on stdout)
+openclaw-gov discover --root ~/.openclaw/governance
+
+# 5b. Or pipe JSON only (human report is on stderr)
 openclaw-gov discover --json --root ~/.openclaw/governance | jq .
 
-# 6. Review inventory (human report is on stderr; cron_instance_groups shows fan-out)
+# 6. Review inventory (cron_instance_groups shows fan-out; group_id in schema v2)
 
-# 7. Review discovery candidates (CI-safe — does not mutate registry.yaml)
+# 7. Review discovery candidates (writes inventory + candidates; does not mutate registry.yaml)
 openclaw-gov discover --staged --root ~/.openclaw/governance
 # Review workflows/discovery-candidates.json, then apply when ready:
 openclaw-gov discover --promote --root ~/.openclaw/governance
@@ -127,9 +130,11 @@ Apply changes explicitly with **`discover --promote`** (or `discover --promote -
 - Does **not** create runbook stubs for workflow IDs already present in `registry.yaml` (existing `runbook:` parent paths are preserved)
 - Skips registry write when there is no semantic diff
 
+**Inventory schema v2 (v0.5.5+):** After upgrading, run `discover --staged` or `discover --inventory` once and commit the regenerated `workflows/discovered-inventory.json`. See [docs/releases/v0.5.5.md](releases/v0.5.5.md).
+
 **Allowlist (v0.5.2+):** `--allowlist` limits promotion to the listed workflow IDs only. Registry rows, runbook stubs, and workspace runbook imports all respect the allowlist. Curated agents and RACI domains are never rewritten by allowlist-scoped promote. `discovery-candidates.json` and `discovered-inventory.json` still reflect the full scan; stderr reports how many candidates were skipped by allowlist (including workspace runbook candidates).
 
-**Brownfield until v0.5.4+ is deployed:** prefer `discover --staged`, review `protected_existing_changed` as a drift signal only, and promote allowlisted rows manually. Avoid full `--promote` against canonical governance until the preserve-on-promote fix is installed.
+**Brownfield on v0.5.3+:** `discover --promote` preserves curated agents/RACI and skips runbook stubs for workflows already in the registry (v0.5.4+). Prefer `discover --staged`, review candidates, then `discover --promote --allowlist` for controlled promotion.
 
 ```bash
 openclaw-gov discover --staged
@@ -166,10 +171,10 @@ Discover fingerprints each cron job from the **full normalized payload** (not a 
 - **Exact duplicate** (same fingerprint): warning `EXACT DUPLICATE CRON`; only the first job is kept in discovery output.
 - **Fan-out** (same name/schedule, different payload): all jobs are kept; materialization creates **one workflow** with multiple `cron_job_ids`.
 
-JSON output includes `cron_instance_groups` for automation. Example:
+JSON output includes `cron_instance_groups` with `group_id` (schema v2). Example:
 
 ```bash
-openclaw-gov discover --json | jq '.cron_instance_groups[] | select(.kind == "fan_out")'
+openclaw-gov discover --json | jq '.cron_instance_groups[] | select(.kind == "fan_out") | {group_id, agent_id, name, job_count}'
 ```
 
 ## Slow or failing agents
