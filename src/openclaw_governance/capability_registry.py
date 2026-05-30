@@ -366,5 +366,7 @@ def build_capability_candidates(
 
 
 def capability_is_governed(entry: dict[str, Any]) -> bool:
-    """True when registry documents governance via runbook (not status alone)."""
+    """True when registry documents governance via runbook or curated status."""
+    if str(entry.get("governance_status") or "") in PROTECTED_CAPABILITY_GOVERNANCE:
+        return True
     return bool(str(entry.get("runbook") or "").strip())

@@ -98,6 +98,10 @@ def _check_skills_payload(
     reg_skills = _registry_skill_index(registry_section)
     inventory_only = 0
     check_registry = _skills_payload_registry_checks_reliable(payload)
+    if not check_registry and payload.get("degraded") is True:
+        check.error(
+            "skills registry coverage could not be validated: discovery degraded"
+        )
 
     for record in skills:
         if not isinstance(record, dict):
