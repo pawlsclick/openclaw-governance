@@ -100,6 +100,7 @@ For system updates, cron/workflow/runbook/registry changes, and other [material]
 
 ```bash
 cd "$GOV_ROOT" && git status --short --branch   # preflight again
+openclaw-gov doctor --validate-config --root "$GOV_ROOT"
 
 openclaw-gov ship start --branch "governance/$(date +%Y-%m-%d)-short-topic" --root "$GOV_ROOT"
 # ... edit runbooks, registry, CHANGELOG; discover --inventory / --staged / --promote as needed ...
@@ -110,7 +111,7 @@ openclaw-gov regen --check --root "$GOV_ROOT"
 openclaw-gov regen --write --root "$GOV_ROOT"
 ```
 
-**Regen rule:** default to `regen --check`. Run `regen --write` only when check fails or you intentionally changed content that regen generates. Do not run `regen --write` habitually on every doc edit.
+**Regen rule:** default to `regen --check`. Run `regen --write` only when `regen --check` fails or you intentionally changed content that regen generates. Do not run `regen --write` habitually on every doc edit.
 
 Completion checklist (before calling done):
 
@@ -132,7 +133,7 @@ Run [Preflight before ship](#preflight-before-ship) first. Use **one** commit pa
 cd "$GOV_ROOT"
 git status --short --branch          # clean or only your intended files
 git remote -v                        # origin configured
-openclaw-gov doctor --root "$GOV_ROOT"
+openclaw-gov doctor --validate-config --root "$GOV_ROOT"
 gh auth status 2>/dev/null || true   # only if you will push
 openclaw-gov check --root "$GOV_ROOT"
 openclaw-gov regen --check --root "$GOV_ROOT"
@@ -150,7 +151,7 @@ openclaw-gov ship start \
 
 openclaw-gov check --root "$GOV_ROOT"
 openclaw-gov regen --check --root "$GOV_ROOT"
-# If check failed: openclaw-gov regen --write --root "$GOV_ROOT" then re-check
+# If regen --check failed: openclaw-gov regen --write --root "$GOV_ROOT" then re-check
 ```
 
 Use an explicit `--branch` name (date + topic) for audit trails; avoid anonymous default branch names during incidents.
