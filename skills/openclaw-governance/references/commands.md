@@ -25,9 +25,8 @@ Pin: **v0.5.5**. Pass `--root PATH` on every command when not using default reso
 | `inject-agents --write` | Yes | Add governance block to AGENTS.md |
 | `inject-agents --write --prune` | Yes | Inject allowlist + remove stanza elsewhere |
 | `inject-agents --agent ID --write` | Yes | Single agent override |
-| `ship start` | Yes (git branch) | Create/checkout feature branch from main |
-| `ship commit` | Yes (git commit) | Validate, stage, Conventional Commit (inferred if no `-m`), optional push/PR |
-| `ship commit -m "type(governance): summary"` | Yes | Same; agent supplies specific conventional message |
-| `ship commit --push` | Yes | Non-interactive push + PR |
+| `ship start --branch NAME` | Yes (git branch) | Create/checkout named feature branch from main |
+| `ship commit --no-push` | Yes (git commit) | Validate, stage, Conventional Commit; stop after commit |
+| `ship commit --push` | Yes | Commit + push + open PR (single step; do not run plain commit first) |
 
 Root precedence: `--root` > `OPENCLAW_GOVERNANCE_ROOT` > nearest `governance.config.yaml` > `~/.openclaw/governance`.

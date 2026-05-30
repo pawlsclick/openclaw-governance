@@ -1,15 +1,17 @@
 ---
 name: openclaw-governance
-description: Operate OpenClaw multi-agent governance with openclaw-gov — discover cron/workflow inventory, validate registry and runbooks, staged brownfield promotion, inject AGENTS.md stanzas, and ship governance PRs. Use when changing crons, workflows, runbooks, registry.yaml, RACI, governance.config.yaml, or when asked to refresh governance inventory, run governance check, adopt/migrate a governance root, or complete material system config changes.
-version: 1.0.0
+description: Operate OpenClaw multi-agent governance with openclaw-gov — read-only audit, material change documentation, staged discovery, validate registry/runbooks, and ship governance PRs. Use when changing crons, workflows, runbooks, registry.yaml, RACI, governance.config.yaml, refreshing inventory, running governance check, or completing material system config changes.
+version: 1.1.0
 metadata:
   openclaw:
     requires:
       bins:
         - openclaw-gov
         - openclaw
+        - git
       anyBins:
         - gh
+        - jq
     envVars:
       - name: OPENCLAW_GOVERNANCE_ROOT
         required: false
@@ -24,165 +26,244 @@ metadata:
 
 # OpenClaw Governance (openclaw-gov)
 
-Teaches agents to maintain the **governance root**: `registry.yaml`, runbooks, CHANGELOG, and CI drift checks. The CLI inventories live OpenClaw state; agents document and ship changes.
+Teaches agents to maintain the **governance root**: `registry.yaml`, runbooks, CHANGELOG, and CI drift checks. Pick **one workflow** below; do not run the full ship path for a read-only audit.
 
 ## Step 0 — Resolve governance root
 
-Precedence: `--root PATH` > `OPENCLAW_GOVERNANCE_ROOT` > nearest `governance.config.yaml` walking up from cwd > `~/.openclaw/governance`.
+**Precedence:** `--root PATH` > `OPENCLAW_GOVERNANCE_ROOT` > nearest `governance.config.yaml` walking up from cwd > `~/.openclaw/governance`.
 
-Always confirm before mutating files:
-
-```bash
-openclaw-gov doctor --validate-config --root "$GOV_ROOT"
-```
-
-Set `GOV_ROOT` to the resolved path for commands below.
-
-## Quick start (read-only, ~3 commands)
+**Workspace override:** If the agent workspace `AGENTS.md` governance stanza (`<!-- openclaw-governance:begin -->`) declares a **Governance root** path, use that path as `$GOV_ROOT` when it differs from the default. The stanza wins over skill defaults for this install.
 
 ```bash
 export GOV_ROOT="${OPENCLAW_GOVERNANCE_ROOT:-$HOME/.openclaw/governance}"
+# If AGENTS.md stanza specifies a path, set GOV_ROOT to that path instead.
+```
 
+### Version preflight (required)
+
+This skill assumes **openclaw-gov v0.5.5+** (`--inventory`, `--staged`, inventory schema v2). Before using those flags:
+
+```bash
+openclaw-gov --version   # expect 0.5.5 or newer
+```
+
+If older, upgrade per [Install CLI](#install-cli-operators) before `--inventory`, `--staged`, `--promote`, or schema-v2 assumptions.
+
+### Shared preflight (before any edit or ship)
+
+Agents share the governance repo with humans. **Never overwrite unrelated user work.**
+
+```bash
+cd "$GOV_ROOT"
+git status --short --branch
+```
+
+- **Dirty worktree with changes outside your task:** stop. Do not `ship start`, `--write`, `--promote`, or `regen --write`. Tell the human what is dirty; offer to scope edits to governance paths only after confirmation.
+- **Unexpected changes under `workflows/` you did not make:** read the diff before proceeding.
+
+Then confirm config:
+
+```bash
+openclaw-gov doctor --validate-config --root "$GOV_ROOT"
+```
+
+## Pick a workflow
+
+| Goal | Section |
+|------|---------|
+| Audit only, no file writes | [Workflow A — Read-only audit](#workflow-a--read-only-audit) |
+| Material change, document + verify locally | [Workflow B — Material change](#workflow-b--material-change) |
+| Open governance PR | [Workflow C — Ship PR](#workflow-c--ship-pr) |
+
+**Material threshold:** [references/material-change-threshold.md](references/material-change-threshold.md)
+
+Governing runbook for material work: `workflows/runbooks/main.system_config_change_governance.md` under `$GOV_ROOT`.
+
+## Workflow A — Read-only audit
+
+No `ship start`. No `--write`, `--promote`, or `regen --write`.
+
+```bash
 openclaw-gov doctor --validate-config --root "$GOV_ROOT"
 openclaw-gov discover --root "$GOV_ROOT"
 openclaw-gov check --root "$GOV_ROOT"
+openclaw-gov regen --check --root "$GOV_ROOT"
 ```
 
-Human report goes to stderr; pipe **only stdout** when using `--json`.
+Optional JSON (targeted slices only): [references/discovery-json-slices.md](references/discovery-json-slices.md)
 
-## When this skill applies
+Pipe **only stdout** for `--json`; human report is on stderr.
 
-Invoke for:
+## Workflow B — Material change
 
-- Cron create/remove/schedule/payload changes
-- New or updated workflow runbooks
-- `workflows/registry.yaml` or RACI changes
-- OpenClaw gateway/runtime/plugin changes that affect automation
-- Cross-repo script path changes referenced by crons (governance PR in same window)
-- Brownfield adoption from an existing governance repo
+For system updates, cron/workflow/runbook/registry changes, and other [material](#what-counts-as-material) work. Branch before any mutating command.
 
-Governing runbook (read when doing material changes): `workflows/runbooks/main.system_config_change_governance.md` under the governance root.
+```bash
+cd "$GOV_ROOT" && git status --short --branch   # preflight again
+openclaw-gov doctor --validate-config --root "$GOV_ROOT"
+
+openclaw-gov ship start --branch "governance/$(date +%Y-%m-%d)-short-topic" --root "$GOV_ROOT"
+# ... edit runbooks, registry, CHANGELOG; discover --inventory / --staged / --promote as needed ...
+
+openclaw-gov check --root "$GOV_ROOT"
+openclaw-gov regen --check --root "$GOV_ROOT"
+# If regen --check fails ONLY because README/RACI markers drifted:
+openclaw-gov regen --write --root "$GOV_ROOT"
+```
+
+**Regen rule:** default to `regen --check`. Run `regen --write` only when `regen --check` fails or you intentionally changed content that regen generates. Do not run `regen --write` habitually on every doc edit.
+
+Completion checklist (before calling done):
+
+- [ ] Live change applied and verified (see [Verification](#verification-local-vs-external))
+- [ ] Runbook updated under `workflows/runbooks/`
+- [ ] `workflows/registry.yaml` updated if workflow is new or materially changed
+- [ ] `workflows/CHANGELOG.md` entry appended
+- [ ] `check` and `regen --check` pass
+
+If the change is material, continue to [Workflow C](#workflow-c--ship-pr) unless site policy says otherwise.
+
+## Workflow C — Ship PR
+
+Run [Preflight before ship](#preflight-before-ship) first. Use **one** commit path below — not both.
+
+### Preflight before ship
+
+```bash
+cd "$GOV_ROOT"
+git status --short --branch          # clean or only your intended files
+git remote -v                        # origin configured
+openclaw-gov doctor --validate-config --root "$GOV_ROOT"
+gh auth status 2>/dev/null || true   # only if you will push
+openclaw-gov check --root "$GOV_ROOT"
+openclaw-gov regen --check --root "$GOV_ROOT"
+```
+
+If worktree is dirty with unrelated changes, **stop** (see Step 0).
+
+### Branch and validate
+
+```bash
+openclaw-gov ship start \
+  --branch "governance/$(date +%Y-%m-%d)-short-topic" \
+  --root "$GOV_ROOT"
+# ... edits already done on this branch, or make them now ...
+
+openclaw-gov check --root "$GOV_ROOT"
+openclaw-gov regen --check --root "$GOV_ROOT"
+# If regen --check failed: openclaw-gov regen --write --root "$GOV_ROOT" then re-check
+```
+
+Use an explicit `--branch` name (date + topic) for audit trails; avoid anonymous default branch names during incidents.
+
+### Commit — choose ONE path
+
+**Path 1 — Local commit only** (human pushes later):
+
+```bash
+openclaw-gov ship commit \
+  -m "docs(governance): describe the change" \
+  --no-push \
+  --root "$GOV_ROOT"
+```
+
+**Path 2 — Commit + push + PR** (non-interactive agents):
+
+```bash
+openclaw-gov ship commit \
+  -m "docs(governance): describe the change" \
+  --push \
+  --root "$GOV_ROOT"
+```
+
+Do **not** run `ship commit` and then `ship commit --push` as two steps.
+
+### Publish policy override
+
+Default: `ship commit --push` uses `git push` + `gh pr create` when `gh auth login` is satisfied.
+
+**Site override:** If the governing runbook, workspace `TOOLS.md`, or operator policy defines a stricter path (GitHub MCP only, human must open PR, no direct push), follow **that** policy instead of the default CLI push. When override applies, use Path 1 (`--no-push`) and hand off per local docs.
+
+### Conventional Commits (required)
+
+Format: `type(governance): imperative summary` — never vague messages (`update`, `WIP`).
+
+| Type | Use when |
+|------|----------|
+| `docs` | Runbooks, README, CHANGELOG |
+| `chore` | Registry sync, inventory refresh |
+| `feat` | Workflow promoted to `active` / `required` |
+| `fix` | Registry/runbook drift correction |
+
+Prefer `ship commit -m "..."` over inferred generic messages.
+
+### Post-merge cleanup
+
+After the governance PR merges:
+
+```bash
+cd "$GOV_ROOT"
+git fetch --prune origin
+git switch main
+git pull --ff-only origin main
+git branch -d governance/YYYY-MM-DD-short-topic   # or -D if squash-merged
+openclaw-gov check --root "$GOV_ROOT"
+openclaw-gov regen --check --root "$GOV_ROOT"
+```
+
+## What counts as material
+
+Governance PRs are required for system updates, workflow/cron/runbook changes, and major operational changes you would need to restore from git. Full examples: [references/material-change-threshold.md](references/material-change-threshold.md).
+
+Cross-repo: material script-path or cron-payload changes in other repos need a **paired governance PR** in the same change window.
+
+## Verification — local vs external
+
+**Local (default, no ask):** `doctor`, `discover`, `check`, `regen --check`, read-only `git diff`, parsing inventory JSON.
+
+**External / side effects (ask first):** smoke tests that send telemetry, hit production APIs, restart gateways, run live crons, post to chat, or mutate off-host state. Separate these from governance doc validation. Get explicit approval before running; document what ran in the runbook/CHANGELOG.
 
 ## NEVER (critical)
 
 1. **Do not** run `discover --write`, `discover --promote`, or `regen --write` on branch `main`.
-2. **Do not** call a governance change "done" without runbook + registry (when needed) + `workflows/CHANGELOG.md` + passing `check`.
-3. **Do not** pipe full `discover --json` into context — use targeted `jq` slices.
-4. **Do not** use `discover --write` on brownfield systems when `discover --staged` + `--promote` is available.
-
-## Ship workflow (always branch first)
-
-```bash
-openclaw-gov ship start --root "$GOV_ROOT"
-# ... edit runbooks, registry, README via discover/regen as needed ...
-openclaw-gov regen --write --root "$GOV_ROOT"
-openclaw-gov check --root "$GOV_ROOT"
-openclaw-gov ship commit --root "$GOV_ROOT"
-# Non-interactive agents:
-openclaw-gov ship commit --root "$GOV_ROOT" --push
-```
-
-Requires git remote configured at governance root. Push/PR needs `gh auth login`.
-
-### Conventional Commits (required)
-
-**Every governance git commit must use [Conventional Commits](https://www.conventionalcommits.org/).** Never commit on `main`. Never use vague messages (`update`, `fix stuff`, `WIP`).
-
-Format:
-
-```
-type(scope): imperative summary
-
-Optional body: what changed and why. Keep subject ≤72 chars.
-```
-
-Common types for governance work:
-
-| Type | Use when |
-|------|----------|
-| `docs` | Runbooks, README, CHANGELOG-only updates |
-| `chore` | Registry sync, inventory refresh, regen output |
-| `feat` | New workflow promoted to `active` / `required` |
-| `fix` | Correcting registry/runbook drift or wrong RACI |
-
-Scope: use `governance` (matches `ship commit` defaults).
-
-Examples:
-
-```bash
-openclaw-gov ship commit -m "docs(governance): add runbook for billing-bot daily sync" --root "$GOV_ROOT"
-openclaw-gov ship commit -m "chore(governance): refresh discovered inventory snapshot" --root "$GOV_ROOT"
-openclaw-gov ship commit -m "feat(governance): promote main.cron.heartbeat to active" --root "$GOV_ROOT"
-```
-
-`ship commit` without `-m` infers a generic conventional message from changed paths (e.g. `docs(governance): update runbooks`). **Prefer `-m` with a specific subject** that names the workflow or artifact you changed.
-
-If you commit manually (not via `ship commit`), stage only governance paths and use the same conventional format before opening a PR.
+2. **Do not** edit governance files when `git status` shows unrelated human changes you did not confirm.
+3. **Do not** pipe full `discover --json` into context — use [references/discovery-json-slices.md](references/discovery-json-slices.md).
+4. **Do not** use `discover --write` on brownfield when `discover --staged` + `--promote` is available.
+5. **Do not** call material work "done" without runbook + registry (when needed) + CHANGELOG + passing `check`.
 
 ## Discover — pick the right flag
 
 | Intent | Command |
 |--------|---------|
-| Console summary only (no files) | `discover` |
+| Console summary only | `discover` |
 | Refresh committed inventory JSON | `discover --inventory` |
-| Inventory + promotion candidates (no registry write) | `discover --staged` |
-| Apply staged merge to registry | `discover --promote` |
+| Inventory + candidates (no registry write) | `discover --staged` |
+| Apply staged merge | `discover --promote` |
 | Controlled promotion | `discover --promote --allowlist path.json` |
-| Legacy immediate registry write | `discover --write` (greenfield only; branch first) |
+| Legacy immediate write | `discover --write` (greenfield; branch first) |
 
-Brownfield flow: see [references/brownfield-flow.md](references/brownfield-flow.md).
-
-Full command matrix: [references/commands.md](references/commands.md).
-
-### Useful JSON slices
-
-```bash
-openclaw-gov discover --json --root "$GOV_ROOT" | jq '.cron_instance_groups[] | select(.kind == "fan_out")'
-openclaw-gov discover --json --root "$GOV_ROOT" | jq '.agent_statuses'
-```
-
-## Material change completion checklist
-
-Before marking the task done:
-
-- [ ] Change applied and verified on the live system
-- [ ] Runbook updated under `workflows/runbooks/`
-- [ ] `workflows/registry.yaml` updated if workflow is new or materially changed
-- [ ] Append entry to `workflows/CHANGELOG.md` (who, what, when, where, why)
-- [ ] `openclaw-gov check` passes
-- [ ] `openclaw-gov regen --check` passes (CI gate)
-- [ ] Governance commit uses Conventional Commits (`type(governance): summary`) on a feature branch
-- [ ] Governance PR open (same change window as domain-repo script/cron changes)
-
-Cross-repo rule: material script-path or cron-payload changes in other repos require a paired governance PR — do not merge domain automation without updated registry/runbook.
+Brownfield: [references/brownfield-flow.md](references/brownfield-flow.md). Commands: [references/commands.md](references/commands.md).
 
 ## Bootstrap and migration
 
 ```bash
-# New governance root
 openclaw-gov init --root "$GOV_ROOT"
-
-# Brownfield: adopt existing repo (source authoritative)
 openclaw-gov adopt --from /path/to/existing-governance --root "$GOV_ROOT"
-
-# Inject governance stanza into agent AGENTS.md (per governance.config.yaml)
 openclaw-gov inject-agents --write
 openclaw-gov inject-agents --write --prune
 ```
 
-See upstream [migrating guide](https://github.com/pawlsclick/openclaw-governance/blob/main/docs/migrating-existing-governance.md).
+Migrating guide: [docs/migrating-existing-governance.md](https://github.com/pawlsclick/openclaw-governance/blob/main/docs/migrating-existing-governance.md)
 
-## Error rescue (common)
+## Error rescue
 
 | Symptom | Fix |
 |---------|-----|
 | No governance root | `openclaw-gov init --root "$GOV_ROOT"` |
-| `config ignored` | Export `OPENCLAW_GOVERNANCE_ROOT` or pass `--root` |
-| discover hangs | Raise `discovery.cron_timeout_seconds` in `governance.config.yaml` |
-| `regen --check` fails | On feature branch: `regen --write`, then commit |
-| jq parse error | Upgrade CLI to v0.5.5+; ensure only JSON on stdout |
-| promote touched curated rows | Restore from git; use `--staged` + `--allowlist` |
-| CI runs old CLI | Bump pin in `.github/workflows/governance-drift.yml` |
+| Dirty worktree | Do not ship; coordinate with human |
+| Old CLI | `openclaw-gov --version`; upgrade to v0.5.5+ |
+| `regen --check` fails | On feature branch: `regen --write`, re-check |
+| promote touched curated rows | Restore from git; `--staged` + `--allowlist` |
 
 ## CI gate (governance repos)
 
@@ -193,6 +274,8 @@ git diff --exit-code workflows/registry.yaml
 ```
 
 ## Install CLI (operators)
+
+**Note:** Frontmatter `metadata.openclaw.install` (kind `uv`) is for **ClawHub/agent auto-install**. Humans on Ubuntu should prefer **pipx**; macOS/containers use **pip** — same git pin `@v0.5.5`, not competing products.
 
 Ubuntu (pipx recommended):
 
