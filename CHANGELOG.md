@@ -4,6 +4,14 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.7.1 — 2026-05-30
+
+**Idempotent capability promote (Issue #28)**
+
+- Stop refreshing `discovered_at` on existing capability registry rows during promote merge.
+- Set `discovered_at` only when a capability object is first created (first-seen semantics).
+- Only mark capabilities as `updated` when a material refresh field actually changes.
+
 ## v0.7.0 — 2026-05-30
 
 **Capability registry writing (Issue #26)**

@@ -59,6 +59,41 @@ def test_is_active_skill_requires_eligible_true() -> None:
     assert is_active_plugin(_plugin("x", enabled=False)) is False
 
 
+def test_merge_capabilities_preserves_discovered_at_on_remerge() -> None:
+    proposed_t1 = propose_capability_entries([_skill("demo")], [], "2026-05-30T17:20:36Z")
+    registry, _created, _updated, _skipped = merge_capabilities({}, proposed_t1, staged=True)
+    first_seen = registry["skills"][0]["discovered_at"]
+
+    proposed_t2 = propose_capability_entries([_skill("demo")], [], "2026-05-30T17:22:00Z")
+    merged, created, updated, _skipped = merge_capabilities(
+        {"capabilities": registry},
+        proposed_t2,
+        staged=True,
+    )
+    assert created == []
+    assert updated == []
+    assert merged["skills"][0]["discovered_at"] == first_seen
+
+
+def test_merge_capabilities_sets_discovered_at_on_create() -> None:
+    proposed = propose_capability_entries([_skill("new-skill")], [], "2026-05-30T12:00:00Z")
+    merged, created, updated, _skipped = merge_capabilities({}, proposed, staged=True)
+    assert created == [skill_registry_id("new-skill")]
+    assert updated == []
+    assert merged["skills"][0]["discovered_at"] == "2026-05-30T12:00:00Z"
+
+
+def test_registry_semantic_diff_unchanged_after_idempotent_merge() -> None:
+    proposed_t1 = propose_capability_entries([_skill("demo")], [_plugin("discord")], "2026-05-30T17:20:36Z")
+    registry, _c, _u, _s = merge_capabilities({}, proposed_t1, staged=True)
+    before = {"capabilities": registry}
+    proposed_t2 = propose_capability_entries([_skill("demo")], [_plugin("discord")], "2026-05-30T17:22:00Z")
+    after_caps, _c2, _u2, _s2 = merge_capabilities(before, proposed_t2, staged=True)
+    after = {"capabilities": after_caps}
+    diff = registry_semantic_diff(before, after)
+    assert diff["changed"] is False
+
+
 def test_merge_capabilities_preserves_runbook() -> None:
     existing = {
         "schema_version": 1,
