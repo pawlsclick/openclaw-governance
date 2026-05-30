@@ -23,11 +23,11 @@ flowchart TB
   GH -->|CI| DRIFT["governance-drift.yml\nregen --check · check"]
 ```
 
-## Install (v0.5.5)
+## Install (v0.6.0)
 
-Pinned release: `@v0.5.5`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
+Pinned release: `@v0.6.0`. Use a git tag for reproducible installs; use `@main` only if you accept moving-head changes.
 
-See [CHANGELOG.md](CHANGELOG.md) and [docs/releases/v0.5.5.md](docs/releases/v0.5.5.md) for upgrade notes (inventory schema v2, read-only discover).
+See [CHANGELOG.md](CHANGELOG.md) and [docs/releases/v0.6.0.md](docs/releases/v0.6.0.md) for capability inventory (Issue #21).
 
 ### Ubuntu / Debian (pipx — recommended)
 
@@ -39,14 +39,14 @@ sudo apt install -y pipx python3-venv
 pipx ensurepath
 # Log out/in, or: source ~/.profile
 
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.5"
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.0"
 openclaw-gov --version
 ```
 
 **Upgrade** to a newer tag (pipx matches installs by full URL — use `--force` when the tag changes):
 
 ```bash
-pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.5" --force
+pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.0" --force
 ```
 
 `pipx upgrade openclaw-governance` alone does not change an existing git tag pin.
@@ -60,7 +60,7 @@ Avoid `pip install --break-system-packages` on the host Python unless you accept
 When you already work inside a virtualenv (or a image without PEP 668 restrictions):
 
 ```bash
-pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.5"
+pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.6.0"
 ```
 
 ### Editable dev install
@@ -133,7 +133,10 @@ openclaw-gov discover --write --root .
 | `openclaw-gov adopt --from PATH` | Adopt source governance root (source authoritative by default) |
 | `openclaw-gov adopt --keep-target-config` | Adopt while keeping existing target `governance.config.yaml` on conflict |
 | `openclaw-gov discover` | Read-only discovery summary (console only; no governance files written) |
+| `openclaw-gov discover --include-skills --include-plugins --staged` | Write skill/plugin capability artifacts (with workflow staged inventory) |
 | `openclaw-gov discover --inventory` | Write stable `workflows/discovered-inventory.json` (no registry changes) |
+| `openclaw-gov check --skills --plugins` | Validate capability drift against `governance.config.yaml` |
+| `openclaw-gov inventory skills --json` | Print committed `workflows/discovered-skills.json` |
 | `openclaw-gov discover --include-runtime-metrics` | Also write `workflows/discovered-inventory-runtime.json` (timings; gitignored locally) |
 | `openclaw-gov discover --json` | Machine-readable inventory JSON on stdout (human report on stderr) |
 | `openclaw-gov discover --write` | Write registry + runbook stubs (implies `--inventory`) |
@@ -242,9 +245,9 @@ Promote workflows to `active` / `required` after you verify triggers and fill in
 
 ## CI
 
-After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs `@v0.5.5` from git, runs `openclaw-gov regen --check` and `openclaw-gov check`, and runs `openclaw-gov discover --staged` with `git diff --exit-code workflows/registry.yaml` so staged discovery cannot mutate the registry in CI.
+After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs `@v0.6.0` from git, runs `openclaw-gov regen --check` and `openclaw-gov check`, and runs `openclaw-gov discover --staged` with `git diff --exit-code workflows/registry.yaml` so staged discovery cannot mutate the registry in CI.
 
-**Existing governance repos:** `init` does not overwrite a workflow file already on disk. After upgrading to v0.5.5, manually bump the install pin in your repo's `.github/workflows/governance-drift.yml` (see [migrating guide](docs/migrating-existing-governance.md#ci-workflow-pin-existing-governance-repos)).
+**Existing governance repos:** `init` does not overwrite a workflow file already on disk. After upgrading to v0.6.0, manually bump the install pin in your repo's `.github/workflows/governance-drift.yml` (see [migrating guide](docs/migrating-existing-governance.md#ci-workflow-pin-existing-governance-repos)).
 
 ## Agent skill (ClawHub)
 

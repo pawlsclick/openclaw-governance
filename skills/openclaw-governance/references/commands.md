@@ -1,6 +1,6 @@
 # openclaw-gov command reference
 
-Pin: **v0.5.5**. Pass `--root PATH` on every command when not using default resolution.
+Pin: **v0.6.0**. Pass `--root PATH` on every command when not using default resolution.
 
 | Command | Mutates files? | Description |
 |---------|----------------|-------------|
@@ -13,6 +13,8 @@ Pin: **v0.5.5**. Pass `--root PATH` on every command when not using default reso
 | `adopt --keep-target-config` | Yes | Adopt; target config wins on conflict |
 | `discover` | No | Read-only console summary |
 | `discover --inventory` | Yes (inventory only) | Write `workflows/discovered-inventory.json` |
+| `discover --include-skills` | No* | Scan skills (*writes with `--inventory`/`--staged`) |
+| `discover --include-plugins` | No* | Scan plugins (*writes with `--inventory`/`--staged`) |
 | `discover --json` | No | JSON on stdout; human report on stderr |
 | `discover --staged` | Yes (inventory + candidates) | No registry mutation |
 | `discover --promote` | Yes | Apply staged merge when semantic diff |
@@ -20,8 +22,13 @@ Pin: **v0.5.5**. Pass `--root PATH` on every command when not using default reso
 | `discover --write` | Yes | Registry + runbook stubs (legacy/greenfield) |
 | `discover --include-runtime-metrics` | Yes | Volatile timings file (gitignored) |
 | `check` | No | Validate registry ↔ runbooks ↔ README |
+| `check --skills` | No | Capability drift (skills; warn by default) |
+| `check --plugins` | No | Capability drift (plugins; fail on enabled undocumented) |
+| `inventory skills --json` | No | Print `workflows/discovered-skills.json` |
+| `inventory plugins --json` | No | Print `workflows/discovered-plugins.json` |
 | `regen --write` | Yes | Refresh README summary + RACI markers |
 | `regen --check` | No | CI drift check |
+| `regen --include-capabilities` | Yes/No | README capability counts from committed artifacts |
 | `inject-agents --write` | Yes | Add governance block to AGENTS.md |
 | `inject-agents --write --prune` | Yes | Inject allowlist + remove stanza elsewhere |
 | `inject-agents --agent ID --write` | Yes | Single agent override |

@@ -4,6 +4,17 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.6.0 — 2026-05-30
+
+**Plugin and skill capability inventory**
+
+- `discover --include-skills` / `--include-plugins` scan OpenClaw CLI JSON plus workspace filesystem drift.
+- With `--inventory` or `--staged`, writes `workflows/discovered-skills.json` and `workflows/discovered-plugins.json` (`capabilities_schema_version: 1`).
+- `check --skills` / `--plugins` validate drift against `governance.config.yaml` `capabilities:` expected/exempt lists.
+- `inventory skills|plugins --json` reads committed artifacts (or `--live`).
+- Optional `regen --include-capabilities` adds compact counts from committed artifacts when README markers exist.
+- Plain `discover` unchanged unless `--include-*` flags are passed.
+
 ## v0.5.5 — 2026-05-28
 
 **Safer, stable discovery artifacts**

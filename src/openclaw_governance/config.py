@@ -16,6 +16,18 @@ MAX_CRON_TIMEOUT_SECONDS = 120
 
 
 @dataclass
+class CapabilitiesConfig:
+    discover_skills: bool = True
+    discover_plugins: bool = True
+    optional_scan_roots: list[str] = field(default_factory=list)
+    expected_skills: list[str] = field(default_factory=list)
+    expected_plugins: list[str] = field(default_factory=list)
+    exempt_skills: list[str] = field(default_factory=list)
+    exempt_plugins: list[str] = field(default_factory=list)
+    check_fail_on: list[str] | None = None
+
+
+@dataclass
 class GovernanceConfig:
     openclaw_home: Path
     governance_root: Path
@@ -34,6 +46,7 @@ class GovernanceConfig:
     discovery_sensitive_preview_flags: list[str] = field(default_factory=list)
     require_readme_markers: bool = True
     finance_agent_owner_check: bool = False
+    capabilities: CapabilitiesConfig = field(default_factory=CapabilitiesConfig)
 
     @property
     def registry_path(self) -> Path:
@@ -132,6 +145,43 @@ def load_config(
     if not isinstance(extra_sensitive_flags, list):
         extra_sensitive_flags = []
 
+    capabilities_cfg = data.get("capabilities") if isinstance(data.get("capabilities"), dict) else {}
+    optional_roots = capabilities_cfg.get("optional_scan_roots")
+    if not isinstance(optional_roots, list):
+        optional_roots = []
+    expected_skills = capabilities_cfg.get("expected_skills")
+    if not isinstance(expected_skills, list):
+        expected_skills = []
+    expected_plugins = capabilities_cfg.get("expected_plugins")
+    if not isinstance(expected_plugins, list):
+        expected_plugins = []
+    exempt_skills = capabilities_cfg.get("exempt_skills")
+    if not isinstance(exempt_skills, list):
+        exempt_skills = []
+    exempt_plugins = capabilities_cfg.get("exempt_plugins")
+    if not isinstance(exempt_plugins, list):
+        exempt_plugins = []
+    if "check_fail_on" in capabilities_cfg:
+        raw_check_fail_on = capabilities_cfg.get("check_fail_on")
+        check_fail_on = (
+            [str(item) for item in raw_check_fail_on]
+            if isinstance(raw_check_fail_on, list)
+            else None
+        )
+    else:
+        check_fail_on = None
+
+    capabilities = CapabilitiesConfig(
+        discover_skills=bool(capabilities_cfg.get("discover_skills", True)),
+        discover_plugins=bool(capabilities_cfg.get("discover_plugins", True)),
+        optional_scan_roots=[str(item) for item in optional_roots],
+        expected_skills=[str(item) for item in expected_skills],
+        expected_plugins=[str(item) for item in expected_plugins],
+        exempt_skills=[str(item) for item in exempt_skills],
+        exempt_plugins=[str(item) for item in exempt_plugins],
+        check_fail_on=check_fail_on,
+    )
+
     return GovernanceConfig(
         openclaw_home=home,
         governance_root=gov_root,
@@ -152,4 +202,5 @@ def load_config(
         discovery_sensitive_preview_flags=[str(item) for item in extra_sensitive_flags],
         require_readme_markers=bool(data.get("require_readme_markers", True)),
         finance_agent_owner_check=bool(data.get("finance_agent_owner_check", False)),
+        capabilities=capabilities,
     )

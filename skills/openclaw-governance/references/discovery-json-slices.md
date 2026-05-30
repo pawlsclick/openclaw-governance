@@ -37,7 +37,7 @@ openclaw-gov discover --json --root "$GOV_ROOT" | jq '[.agents[].agent_id]'
 jq '[.candidates[]? | {id, kind, reason}]' "$GOV_ROOT/workflows/discovery-candidates.json"
 
 # Inventory schema version
-jq '.schema_version' "$GOV_ROOT/workflows/discovered-inventory.json"
+jq '.inventory_schema_version' "$GOV_ROOT/workflows/discovered-inventory.json"
 
 # Count cron instance groups
 openclaw-gov discover --json --root "$GOV_ROOT" | jq '.cron_instance_groups | length'
@@ -57,4 +57,18 @@ openclaw-gov discover --json --root "$GOV_ROOT" | jq '.governance_runbooks[]? | 
 
 ```bash
 openclaw-gov discover --json --root "$GOV_ROOT" | jq '.git_repos[]? | {path, remote_url}'
+```
+
+## Capability inventory (v0.6.0+)
+
+```bash
+# Undocumented enabled plugins
+jq '.plugins[] | select(.governance_status == "undocumented" and .enabled == true) | {id, name, status}' \
+  "$GOV_ROOT/workflows/discovered-plugins.json"
+
+# Skill drift summary
+jq '.summary' "$GOV_ROOT/workflows/discovered-skills.json"
+
+# Or live inventory subcommand
+openclaw-gov inventory plugins --json --root "$GOV_ROOT" | jq '.summary'
 ```
