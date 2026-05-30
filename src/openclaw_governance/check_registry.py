@@ -138,6 +138,18 @@ def check_workflows(root: Path, registry: dict[str, Any], check: Check, config: 
                 f"workflows[{workflow_id}] is archived but runtime_status is {runtime_status!r}",
             )
 
+        if workflow.get("orchestration") == "openclaw_cron":
+            top_fp = workflow.get("cron_fingerprint")
+            discovered = workflow.get("discovered_from")
+            if isinstance(top_fp, str) and top_fp and isinstance(discovered, dict):
+                nested_fp = discovered.get("cron_fingerprint")
+                if isinstance(nested_fp, str) and nested_fp and nested_fp != top_fp:
+                    check.error(
+                        f"workflows[{workflow_id}].discovered_from.cron_fingerprint "
+                        f"({nested_fp!r}) does not match cron_fingerprint ({top_fp!r}); "
+                        "re-run discover --promote after upgrading openclaw-gov"
+                    )
+
     platform = registry.get("platform", {})
     if isinstance(platform, dict):
         for platform_id, platform_config in platform.items():

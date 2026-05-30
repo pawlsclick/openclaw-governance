@@ -4,6 +4,13 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.7.2 — 2026-05-30
+
+**Cron fingerprint sync on promote (Issue #30)**
+
+- `discover --promote` now keeps `discovered_from.cron_fingerprint` in sync with top-level `cron_fingerprint` and `cron_instances[].fingerprint`.
+- `openclaw-gov check` errors when a single-string cron workflow has mismatched nested vs top-level fingerprints.
+
 ## v0.7.1 — 2026-05-30
 
 **Idempotent capability promote (Issue #28)**

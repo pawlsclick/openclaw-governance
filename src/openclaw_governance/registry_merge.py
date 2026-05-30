@@ -153,15 +153,21 @@ def merge_workflows(
                 continue
 
             _union_cron_job_ids(current, workflow)
+            discovered = workflow.get("discovered_from")
             if workflow.get("cron_fingerprint"):
                 current["cron_fingerprint"] = workflow["cron_fingerprint"]
-            discovered = workflow.get("discovered_from")
-            if isinstance(discovered, dict) and discovered.get("cron_instances"):
+            if isinstance(discovered, dict):
                 current_discovered = current.get("discovered_from")
                 if not isinstance(current_discovered, dict):
                     current_discovered = {}
                     current["discovered_from"] = current_discovered
-                current_discovered["cron_instances"] = discovered["cron_instances"]
+                if discovered.get("cron_instances"):
+                    current_discovered["cron_instances"] = discovered["cron_instances"]
+                nested_fp = discovered.get("cron_fingerprint")
+                if nested_fp is None and workflow.get("cron_fingerprint") is not None:
+                    nested_fp = workflow["cron_fingerprint"]
+                if nested_fp is not None:
+                    current_discovered["cron_fingerprint"] = nested_fp
             if workflow.get("orchestration") == "openclaw_cron":
                 if current.get("orchestration") != "openclaw_cron":
                     for field in CRON_DISCOVERY_REFRESH_FIELDS:
