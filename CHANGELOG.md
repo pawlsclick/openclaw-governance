@@ -4,6 +4,12 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.6.2 — 2026-05-30
+
+**Skill duplicate classification fix**
+
+- `mark_duplicate_skills` skips records with empty `install_path`. Runtime CLI skills without `filePath` were resolving `Path("")` to the process CWD and incorrectly marking ~100+ distinct skills as duplicates of the first pathless entry.
+
 ## v0.6.1 — 2026-05-30
 
 **Skill JSON capture hotfix (Issue #21 validation)**

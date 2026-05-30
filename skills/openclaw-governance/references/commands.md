@@ -1,6 +1,6 @@
 # openclaw-gov command reference
 
-Pin: **v0.6.1**. Pass `--root PATH` on every command when not using default resolution.
+Pin: **v0.6.2**. Pass `--root PATH` on every command when not using default resolution.
 
 | Command | Mutates files? | Description |
 |---------|----------------|-------------|
