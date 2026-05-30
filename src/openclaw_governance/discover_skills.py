@@ -148,6 +148,8 @@ def discover_skills(
         "openclaw_home": str(config.openclaw_home),
         "openclaw_cli_version": openclaw_cli_version(),
         "scope_note": SCOPE_NOTE,
+        "cli_capture": "failed" if err else "ok",
+        "degraded": bool(errors),
         "skills": skills,
         "summary": summarize_statuses(skills),
         "warnings": warnings,
