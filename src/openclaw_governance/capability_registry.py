@@ -206,22 +206,33 @@ def merge_capabilities(
     proposed: dict[str, Any],
     *,
     staged: bool = False,
+    merge_skills: bool = True,
+    merge_plugins: bool = True,
 ) -> tuple[dict[str, Any], list[str], list[str], list[str]]:
     """Merge proposed capability entries; preserve curated registry fields when staged."""
     current = _capabilities_section(existing if existing else {})
     prop_skills = proposed.get("skills") if isinstance(proposed.get("skills"), list) else []
     prop_plugins = proposed.get("plugins") if isinstance(proposed.get("plugins"), list) else []
 
-    merged_skills, created_s, updated_s, skipped_s = _merge_capability_list(
-        current["skills"],
-        prop_skills,
-        staged=staged,
-    )
-    merged_plugins, created_p, updated_p, skipped_p = _merge_capability_list(
-        current["plugins"],
-        prop_plugins,
-        staged=staged,
-    )
+    if merge_skills:
+        merged_skills, created_s, updated_s, skipped_s = _merge_capability_list(
+            current["skills"],
+            prop_skills,
+            staged=staged,
+        )
+    else:
+        merged_skills = list(current["skills"])
+        created_s, updated_s, skipped_s = [], [], []
+
+    if merge_plugins:
+        merged_plugins, created_p, updated_p, skipped_p = _merge_capability_list(
+            current["plugins"],
+            prop_plugins,
+            staged=staged,
+        )
+    else:
+        merged_plugins = list(current["plugins"])
+        created_p, updated_p, skipped_p = [], [], []
 
     merged = {
         "schema_version": CAPABILITY_SCHEMA_VERSION,

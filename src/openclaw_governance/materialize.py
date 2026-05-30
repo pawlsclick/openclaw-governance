@@ -761,6 +761,8 @@ def materialize_from_discovery(
                     existing_capabilities,
                     proposed_capabilities,
                     staged=staged_merge,
+                    merge_skills=skills_result is not None,
+                    merge_plugins=plugins_result is not None,
                 )
                 registry["capabilities"] = merged_capabilities
                 summary["capability_created"] = cap_created
