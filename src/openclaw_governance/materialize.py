@@ -702,6 +702,7 @@ def materialize_from_discovery(
             and include_plugins
             and plugins_result is not None
             and not plugins_blocking
+            and not plugins_errors
         )
         if write_skills or write_plugins:
             if write_skills and skills_result is not None and skills_result.errors:
