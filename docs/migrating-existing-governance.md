@@ -8,6 +8,29 @@ Use this guide when you already have a governance repository with hand-authored 
 - `openclaw-gov` v0.5.5+ installed ([README](../README.md))
 - A backup or git commit of your governance repo before merging
 
+## Discover flow (brownfield)
+
+After adoption or when refreshing an existing governance repo:
+
+```mermaid
+flowchart TD
+  A["openclaw-gov discover"] --> B["Console summary only\n(no files written)"]
+  B --> C{"Need committed inventory?"}
+  C -->|inventory only| D["discover --inventory"]
+  C -->|review + candidates| E["discover --staged"]
+  C -->|apply registry| F["discover --promote\n(or --promote --allowlist)"]
+  D --> G["workflows/discovered-inventory.json\n(schema v2)"]
+  E --> G
+  E --> H["workflows/discovery-candidates.json"]
+  F --> G
+  F --> I["registry.yaml + runbooks\n(when semantic diff)"]
+  G --> J["git commit inventory"]
+  H --> K["review candidates"]
+  K --> F
+```
+
+Use **`discover --inventory`** when you only want to refresh the stable inventory snapshot (no candidates, no registry). Use **`discover --staged`** when you also want `discovery-candidates.json` for promotion review.
+
 ## Recommended migration flow
 
 ```bash
@@ -23,15 +46,18 @@ openclaw-gov doctor --validate-config --root ~/.openclaw/governance
 # 4. Registry and runbook checks
 openclaw-gov check --root ~/.openclaw/governance
 
-# 5. Discover inventory (read-only console; machine-readable JSON on stdout)
+# 5. Discover (read-only — working tree should stay clean)
 openclaw-gov discover --root ~/.openclaw/governance
 
-# 5b. Or pipe JSON only (human report is on stderr)
+# 5b. Refresh committed inventory only (schema v2; no candidates, no registry)
+openclaw-gov discover --inventory --root ~/.openclaw/governance
+
+# 5c. Or pipe full JSON to jq (human report is on stderr)
 openclaw-gov discover --json --root ~/.openclaw/governance | jq .
 
-# 6. Review inventory (cron_instance_groups shows fan-out; group_id in schema v2)
+# 6. Review inventory (cron_instance_groups + group_id; see releases/v0.5.5.md)
 
-# 7. Review discovery candidates (writes inventory + candidates; does not mutate registry.yaml)
+# 7. Staged review (inventory + candidates; does not mutate registry.yaml)
 openclaw-gov discover --staged --root ~/.openclaw/governance
 # Review workflows/discovery-candidates.json, then apply when ready:
 openclaw-gov discover --promote --root ~/.openclaw/governance
@@ -52,6 +78,19 @@ openclaw-gov regen --check && openclaw-gov check
 ```
 
 Do not rely on vendored generator scripts; the packaged `openclaw-gov regen` output is canonical.
+
+### CI workflow pin (existing governance repos)
+
+`openclaw-gov init` copies `.github/workflows/governance-drift.yml` into **new** governance roots only. If your repo was initialized before v0.5.5, the workflow file on disk is **not** auto-updated when you upgrade the CLI.
+
+Manually bump the install line in your governance repo's copy:
+
+```yaml
+# .github/workflows/governance-drift.yml
+- run: python -m pip install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@v0.5.5"
+```
+
+Commit that change with your inventory refresh. New installs from `init` already get `@v0.5.5` from the upstream template.
 
 ## Set the governance root
 
@@ -203,3 +242,4 @@ After verifying triggers and runbooks, promote entries in `workflows/registry.ya
 | discover hangs | Increase `discovery.cron_timeout_seconds`; test `openclaw cron list --agent ID --json` |
 | config ignored | Set `OPENCLAW_GOVERNANCE_ROOT` or pass `--root` |
 | inject dry-run modified files | Upgrade to v0.5.1+ (dry-run must not write) |
+| CI still runs old openclaw-gov | Edit `.github/workflows/governance-drift.yml` install pin (init does not overwrite existing workflow) |

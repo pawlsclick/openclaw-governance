@@ -244,6 +244,8 @@ Promote workflows to `active` / `required` after you verify triggers and fill in
 
 After `init`, commit the governance root and enable `.github/workflows/governance-drift.yml`. It installs `@v0.5.5` from git, runs `openclaw-gov regen --check` and `openclaw-gov check`, and runs `openclaw-gov discover --staged` with `git diff --exit-code workflows/registry.yaml` so staged discovery cannot mutate the registry in CI.
 
+**Existing governance repos:** `init` does not overwrite a workflow file already on disk. After upgrading to v0.5.5, manually bump the install pin in your repo's `.github/workflows/governance-drift.yml` (see [migrating guide](docs/migrating-existing-governance.md#ci-workflow-pin-existing-governance-repos)).
+
 ## License
 
 MIT
