@@ -156,7 +156,16 @@ def run_regen_summary(
     if include_capabilities:
         capabilities_generated = render_capabilities_summary(config)
         if capabilities_generated is None:
-            print("WARN no discovered-skills.json or discovered-plugins.json; skipping capabilities summary")
+            if check:
+                print(
+                    "ERROR discovered-skills.json and discovered-plugins.json missing; "
+                    "run: openclaw-gov discover --staged --include-skills --include-plugins"
+                )
+                return 1
+            print(
+                "WARN no discovered-skills.json or discovered-plugins.json; "
+                "skipping capabilities summary"
+            )
         else:
             cap_updated = replace_optional_marked_section(
                 updated,

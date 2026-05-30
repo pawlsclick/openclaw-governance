@@ -181,7 +181,7 @@ def load_config(
         expected_plugins=[str(item) for item in expected_plugins],
         exempt_skills=[str(item) for item in exempt_skills],
         exempt_plugins=[str(item) for item in exempt_plugins],
-        check_fail_on=[str(item) for item in check_fail_on],
+        check_fail_on=check_fail_on,
     )
 
     return GovernanceConfig(
