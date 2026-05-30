@@ -63,6 +63,8 @@ def apply_skill_governance_statuses(
     expected_norm = {_normalize_key(item) for item in expected}
     exempt_norm = {_normalize_key(item) for item in exempt}
     for record in skills:
+        if not isinstance(record, dict):
+            continue
         record["governance_status"] = classify_skill_record(
             record,
             expected=expected_norm,
@@ -79,6 +81,8 @@ def apply_plugin_governance_statuses(
     expected_norm = {_normalize_key(item) for item in expected}
     exempt_norm = {_normalize_key(item) for item in exempt}
     for record in plugins:
+        if not isinstance(record, dict):
+            continue
         record["governance_status"] = classify_plugin_record(
             record,
             expected=expected_norm,
@@ -89,6 +93,8 @@ def apply_plugin_governance_statuses(
 def summarize_statuses(records: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for record in records:
+        if not isinstance(record, dict):
+            continue
         status = str(record.get("governance_status") or "undocumented")
         counts[status] = counts.get(status, 0) + 1
     counts["total"] = len(records)

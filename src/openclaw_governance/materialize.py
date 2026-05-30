@@ -663,18 +663,26 @@ def materialize_from_discovery(
             capabilities_errors.append(
                 "--include-plugins requested but capabilities.discover_plugins is false"
             )
-        if capabilities_errors:
-            summary["capabilities_errors"] = capabilities_errors
         skills_result = None
         plugins_result = None
         if include_skills and config.capabilities.discover_skills:
             skills_result = discover_skills(config, result.agents, config.capabilities)
             summary["skills_summary"] = skills_result.payload.get("summary")
             summary["skills_warnings"] = skills_result.warnings
+            for err in skills_result.errors:
+                phase = err.get("phase", "skills") if isinstance(err, dict) else "skills"
+                message = err.get("message", err) if isinstance(err, dict) else err
+                capabilities_errors.append(f"{phase}: {message}")
         if include_plugins and config.capabilities.discover_plugins:
             plugins_result = discover_plugins(config, config.capabilities)
             summary["plugins_summary"] = plugins_result.payload.get("summary")
             summary["plugins_warnings"] = plugins_result.warnings
+            for err in plugins_result.errors:
+                phase = err.get("phase", "plugins") if isinstance(err, dict) else "plugins"
+                message = err.get("message", err) if isinstance(err, dict) else err
+                capabilities_errors.append(f"{phase}: {message}")
+        if capabilities_errors:
+            summary["capabilities_errors"] = capabilities_errors
         if effective_write_capabilities:
             summary.update(
                 write_capability_artifacts(

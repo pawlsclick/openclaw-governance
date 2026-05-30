@@ -40,6 +40,7 @@ def _check_skills_payload(payload: dict[str, Any], check: CapabilityCheck, fail_
     undocumented_material = 0
     for record in skills:
         if not isinstance(record, dict):
+            check.error("discovered-skills.json contains non-object skill entries")
             continue
         status = str(record.get("governance_status") or "undocumented")
         if status == "undocumented" and skill_is_material(record):
@@ -103,6 +104,7 @@ def _check_plugins_payload(payload: dict[str, Any], check: CapabilityCheck, fail
 
     for record in plugins:
         if not isinstance(record, dict):
+            check.error("discovered-plugins.json contains non-object plugin entries")
             continue
         status = str(record.get("governance_status") or "undocumented")
         if status != "undocumented":
