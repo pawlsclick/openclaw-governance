@@ -65,7 +65,8 @@ def is_active_skill(record: dict[str, Any]) -> bool:
 def is_active_plugin(record: dict[str, Any]) -> bool:
     if not isinstance(record, dict):
         return False
-    return bool(record.get("enabled"))
+    status = str(record.get("status") or "")
+    return status == "loaded" or bool(record.get("enabled"))
 
 
 def is_inventory_only_skill(record: dict[str, Any]) -> bool:
