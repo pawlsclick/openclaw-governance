@@ -9,6 +9,10 @@ from typing import Any
 
 import yaml
 
+from openclaw_governance.check_capabilities import (
+    _reapply_plugin_governance,
+    _reapply_skill_governance,
+)
 from openclaw_governance.config import GovernanceConfig
 from openclaw_governance.inventory_artifacts import load_plugins_artifact, load_skills_artifact
 from openclaw_governance.registry_common import UniqueKeyLoader, construct_mapping_without_duplicate_keys, load_registry
@@ -84,23 +88,30 @@ def replace_marked_section(readme: str, new_body: str) -> str:
 
 
 def render_capabilities_summary(config: GovernanceConfig) -> str | None:
+    workflows_dir = config.governance_root / "workflows"
+    skills_path = workflows_dir / "discovered-skills.json"
+    plugins_path = workflows_dir / "discovered-plugins.json"
     skills = load_skills_artifact(config)
     plugins = load_plugins_artifact(config)
     if skills is None and plugins is None:
+        return None
+    if (skills_path.is_file() and not skills) or (plugins_path.is_file() and not plugins):
         return None
 
     lines: list[str] = []
     lines.append("Capability inventory snapshots (from committed discovered-*.json):")
     lines.append("")
-    if skills and isinstance(skills.get("summary"), dict):
-        summary = skills["summary"]
+    if skills:
+        _reapply_skill_governance(skills, config)
+        summary = skills.get("summary") if isinstance(skills.get("summary"), dict) else {}
         lines.append(
             f"- Skills: {summary.get('total', 0)} total, "
             f"{summary.get('undocumented', 0)} undocumented, "
             f"{summary.get('expected', 0)} expected"
         )
-    if plugins and isinstance(plugins.get("summary"), dict):
-        summary = plugins["summary"]
+    if plugins:
+        _reapply_plugin_governance(plugins, config)
+        summary = plugins.get("summary") if isinstance(plugins.get("summary"), dict) else {}
         lines.append(
             f"- Plugins: {summary.get('total', 0)} total, "
             f"{summary.get('undocumented', 0)} undocumented, "
@@ -158,7 +169,7 @@ def run_regen_summary(
         if capabilities_generated is None:
             if check:
                 print(
-                    "ERROR discovered-skills.json and discovered-plugins.json missing; "
+                    "ERROR discovered-skills.json and/or discovered-plugins.json missing or invalid; "
                     "run: openclaw-gov discover --staged --include-skills --include-plugins"
                 )
                 return 1
@@ -188,7 +199,24 @@ def run_regen_summary(
 
     if check:
         if updated != readme:
-            print("ERROR README workflow summary is stale; run: openclaw-gov regen --write")
+            workflow_only = replace_marked_section(readme, generated)
+            if workflow_only != readme:
+                print("ERROR README workflow summary is stale; run: openclaw-gov regen --write")
+                return 1
+            if include_capabilities and capabilities_generated is not None:
+                cap_only = replace_optional_marked_section(
+                    readme,
+                    CAPABILITIES_BEGIN,
+                    CAPABILITIES_END,
+                    capabilities_generated,
+                )
+                if cap_only is not None and cap_only != readme:
+                    print(
+                        "ERROR README capabilities summary is stale; "
+                        "run: openclaw-gov regen --write --include-capabilities"
+                    )
+                    return 1
+            print("ERROR README summary is stale; run: openclaw-gov regen --write")
             return 1
         print("readme_workflow_summary_ok")
         return 0

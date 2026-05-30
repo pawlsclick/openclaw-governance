@@ -23,7 +23,8 @@ def classify_skill_record(
     expected: set[str],
     exempt: set[str],
 ) -> str:
-    if record.get("flags", {}).get("duplicate_of"):
+    flags = record.get("flags") or {}
+    if flags.get("duplicate_of"):
         return "duplicate"
     name = _normalize_key(str(record.get("name") or ""))
     path_key = _normalize_key(str(record.get("install_path") or ""))
@@ -33,7 +34,7 @@ def classify_skill_record(
         return "expected"
     if name in expected and str(record.get("source") or "") not in FILESYSTEM_SKILL_SOURCES:
         return "expected"
-    if record.get("flags", {}).get("orphan"):
+    if flags.get("orphan"):
         return "undocumented"
     if record.get("bundled"):
         return "undocumented"
@@ -63,6 +64,8 @@ def apply_skill_governance_statuses(
     expected_norm = {_normalize_key(item) for item in expected}
     exempt_norm = {_normalize_key(item) for item in exempt}
     for record in skills:
+        if not isinstance(record, dict):
+            continue
         record["governance_status"] = classify_skill_record(
             record,
             expected=expected_norm,
@@ -79,6 +82,8 @@ def apply_plugin_governance_statuses(
     expected_norm = {_normalize_key(item) for item in expected}
     exempt_norm = {_normalize_key(item) for item in exempt}
     for record in plugins:
+        if not isinstance(record, dict):
+            continue
         record["governance_status"] = classify_plugin_record(
             record,
             expected=expected_norm,
@@ -89,6 +94,8 @@ def apply_plugin_governance_statuses(
 def summarize_statuses(records: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for record in records:
+        if not isinstance(record, dict):
+            continue
         status = str(record.get("governance_status") or "undocumented")
         counts[status] = counts.get(status, 0) + 1
     counts["total"] = len(records)

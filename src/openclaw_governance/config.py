@@ -168,7 +168,7 @@ def load_config(
         check_fail_on = (
             [str(item) for item in raw_check_fail_on]
             if isinstance(raw_check_fail_on, list)
-            else []
+            else None
         )
     else:
         check_fail_on = None

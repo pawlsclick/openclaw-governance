@@ -40,6 +40,7 @@ def _check_skills_payload(payload: dict[str, Any], check: CapabilityCheck, fail_
     undocumented_material = 0
     for record in skills:
         if not isinstance(record, dict):
+            check.error("discovered-skills.json contains non-object skill entries")
             continue
         status = str(record.get("governance_status") or "undocumented")
         if status == "undocumented" and skill_is_material(record):
@@ -103,6 +104,7 @@ def _check_plugins_payload(payload: dict[str, Any], check: CapabilityCheck, fail
 
     for record in plugins:
         if not isinstance(record, dict):
+            check.error("discovered-plugins.json contains non-object plugin entries")
             continue
         status = str(record.get("governance_status") or "undocumented")
         if status != "undocumented":
@@ -133,9 +135,14 @@ def run_check_capabilities(
     if skills:
         payload = None
         if live:
-            discovery = discover(config)
-            result = discover_skills(config, discovery.agents, config.capabilities)
-            payload = result.payload
+            if not config.capabilities.discover_skills:
+                check.error(
+                    "--skills --live requested but capabilities.discover_skills is false"
+                )
+            else:
+                discovery = discover(config)
+                result = discover_skills(config, discovery.agents, config.capabilities)
+                payload = result.payload
         else:
             payload = load_skills_artifact(config)
             if payload is None:
@@ -154,8 +161,13 @@ def run_check_capabilities(
     if plugins:
         payload = None
         if live:
-            result = discover_plugins(config, config.capabilities)
-            payload = result.payload
+            if not config.capabilities.discover_plugins:
+                check.error(
+                    "--plugins --live requested but capabilities.discover_plugins is false"
+                )
+            else:
+                result = discover_plugins(config, config.capabilities)
+                payload = result.payload
         else:
             payload = load_plugins_artifact(config)
             if payload is None:

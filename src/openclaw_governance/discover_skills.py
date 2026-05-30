@@ -29,10 +29,21 @@ class SkillsDiscoveryResult:
     errors: list[dict[str, Any]] = field(default_factory=list)
 
 
+def _source_is_install_path(source: str) -> bool:
+    if not source:
+        return False
+    if source.startswith(("/", "~")):
+        return True
+    return "/" in source or "\\" in source
+
+
 def _project_cli_skill(skill: dict[str, Any], *, agent_id: str | None) -> dict[str, Any]:
     source = str(skill.get("source") or "")
     name = str(skill.get("name") or "unnamed")
-    install_path = shorten_home(str(skill.get("filePath") or skill.get("baseDir") or skill.get("source") or name))
+    install_raw = skill.get("filePath") or skill.get("baseDir")
+    if not install_raw and _source_is_install_path(source):
+        install_raw = source
+    install_path = shorten_home(str(install_raw)) if install_raw else ""
     path_obj = Path(str(skill.get("filePath") or skill.get("path") or name))
     return {
         "name": name,
