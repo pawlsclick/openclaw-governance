@@ -4,6 +4,13 @@ All notable changes to the **openclaw-governance** package (`openclaw-gov` CLI).
 
 Install pins use git tags: `pipx install "openclaw-governance @ git+https://github.com/pawlsclick/openclaw-governance@vX.Y.Z"`
 
+## v0.7.3 — 2026-05-30
+
+**CLI version display (follow-up to v0.7.2)**
+
+- `openclaw-gov --version` now reads from package metadata (`pyproject.toml`) instead of a stale hardcoded `__init__.py` string.
+- Add CI test ensuring installed version matches `pyproject.toml`.
+
 ## v0.7.2 — 2026-05-30
 
 **Cron fingerprint sync on promote (Issue #30)**
